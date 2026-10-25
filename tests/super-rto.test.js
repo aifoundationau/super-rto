@@ -34,6 +34,7 @@ import {
 // 4. Assessments & 5-Level Rubrics Tests
 import {
   DEFAULT_RUBRIC_LEVEL_NAMES,
+  DEFAULT_GENERIC_RUBRIC_DESCRIPTORS,
   createDefaultRubricLevels,
   parseCsvLine,
   generateRubricsTemplateCsv,
@@ -160,14 +161,15 @@ describe('Super-RTO Unified Platform Test Suite', () => {
       assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES[4], 'Level 5 - Exemplary / Mastered');
     });
 
-    it('should generate 5 fully populated rubric levels for a given criterion', () => {
-      const levels = createDefaultRubricLevels('Hazard Identification');
+    it('should generate 5 fully populated generic rubric levels explaining how to think about the score', () => {
+      const levels = createDefaultRubricLevels('Performance Criterion');
       assert.strictEqual(levels.length, 5);
       levels.forEach((lvl, idx) => {
         assert.strictEqual(lvl.level, idx + 1);
         assert.strictEqual(lvl.label, DEFAULT_RUBRIC_LEVEL_NAMES[idx]);
-        assert.ok(lvl.descriptor.length > 20, `Level ${idx + 1} must have a non-trivial descriptor`);
-        assert.ok(lvl.descriptor.includes('Hazard Identification'));
+        assert.strictEqual(lvl.descriptor, DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[idx]);
+        assert.ok(lvl.descriptor.length > 50, `Level ${idx + 1} must have a detailed score explanation`);
+        assert.ok(lvl.descriptor.startsWith('How to think about this score'), `Level ${idx + 1} must explain how to think about the score`);
       });
     });
 

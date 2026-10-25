@@ -173,152 +173,48 @@ const DEFAULT_COURSE: CourseData = {
         {
           id: 'ass-formative-1',
           type: 'formative',
-          title: 'Workplace Hazard Recognition Workshop & Formative Quiz',
-          description: 'Continuous formative assessment measuring practical hazard identification, statutory risk evaluation, and peer safety consultation.',
+          title: 'Formative Knowledge Check & Practice Activity',
+          description: 'Continuous formative assessment measuring foundational concepts, applied problem-solving, and reflective practice.',
           criteria: [
             {
               id: 'crit-f-1',
-              name: 'Statutory Hazard Identification & Classification',
+              name: 'Foundational Knowledge & Principles',
               weight: 50,
-              competentDescriptor: 'Accurately identifies all workplace hazards and cites relevant WHS Act and Regulation provisions.',
-              notYetCompetentDescriptor: 'Unable to identify basic workplace hazards; omits statutory compliance provisions.',
-              levels: [
-                {
-                  level: 1,
-                  label: 'Level 1 - Not Yet Competent (NYC)',
-                  descriptor: 'Unable to identify basic workplace hazards; omits statutory compliance provisions and Safe Work Australia standards.'
-                },
-                {
-                  level: 2,
-                  label: 'Level 2 - Developing / Threshold',
-                  descriptor: 'Identifies obvious physical hazards only; incomplete statutory references and limited understanding of latent chemical/biological risks.'
-                },
-                {
-                  level: 3,
-                  label: 'Level 3 - Competent (C) / Proficient',
-                  descriptor: 'Accurately identifies all workplace hazards and cites relevant WHS Act and Regulation provisions with verifiable evidence.'
-                },
-                {
-                  level: 4,
-                  label: 'Level 4 - Advanced / Accomplished',
-                  descriptor: 'Identifies compound and systemic risks; articulates cross-departmental liability and proactive hazard controls.'
-                },
-                {
-                  level: 5,
-                  label: 'Level 5 - Exemplary / Mastered',
-                  descriptor: 'Demonstrates forensic workplace safety analysis; models predictive hazards and integrates industry best practices into consultation logs.'
-                }
-              ]
+              competentDescriptor: 'Meets competency benchmark: consistently and accurately applies core principles and concepts.',
+              notYetCompetentDescriptor: 'Critical gaps: fundamental concepts are missing, inaccurate, or non-compliant.',
+              levels: createDefaultRubricLevels('Foundational Knowledge & Principles')
             },
             {
               id: 'crit-f-2',
-              name: 'Consultative Feedback & Peer Safety Protocol',
+              name: 'Applied Practice & Consultative Reflection',
               weight: 50,
-              competentDescriptor: 'Actively facilitates consultative safety checks and accurately logs worker inputs according to WHS consultation procedures.',
-              notYetCompetentDescriptor: 'Does not participate in consultative discussions or fail to record worker safety concerns.',
-              levels: [
-                {
-                  level: 1,
-                  label: 'Level 1 - Not Yet Competent (NYC)',
-                  descriptor: 'Does not participate in consultative discussions or fails to record worker safety concerns.'
-                },
-                {
-                  level: 2,
-                  label: 'Level 2 - Developing / Threshold',
-                  descriptor: 'Participates passively; records feedback with significant gaps in consultative protocol or worker representation.'
-                },
-                {
-                  level: 3,
-                  label: 'Level 3 - Competent (C) / Proficient',
-                  descriptor: 'Actively facilitates consultative safety checks and accurately logs worker inputs according to WHS consultation procedures.'
-                },
-                {
-                  level: 4,
-                  label: 'Level 4 - Advanced / Accomplished',
-                  descriptor: 'Constructively guides peer safety evaluations; resolves differing risk ratings through consultative evidence and consensus.'
-                },
-                {
-                  level: 5,
-                  label: 'Level 5 - Exemplary / Mastered',
-                  descriptor: 'Exemplifies institutional safety leadership; mentors colleagues and synthesizes multi-stakeholder feedback into proactive policies.'
-                }
-              ]
+              competentDescriptor: 'Meets competency benchmark: reliably executes standard procedures and participates constructively.',
+              notYetCompetentDescriptor: 'Critical gaps: unable to complete routine tasks or engage with collaborative procedures.',
+              levels: createDefaultRubricLevels('Applied Practice & Consultative Reflection')
             }
           ]
         },
         {
           id: 'ass-summative-1',
           type: 'summative',
-          title: 'Workplace Hazard Identification & Consultative Portfolio',
-          description: 'Comprehensive summative capstone portfolio assessing end-to-end risk assessment, statutory compliance documentation, and formal consultative management presentation.',
+          title: 'Summative Performance Portfolio & Capstone Evaluation',
+          description: 'Formal summative evaluation assessing end-to-end practical execution, regulatory compliance documentation, and portfolio deliverables.',
           criteria: [
             {
               id: 'crit-s-1',
-              name: 'Statutory Risk Assessment Matrix (ISO 31000)',
+              name: 'Demonstration & Execution Rigor',
               weight: 50,
-              competentDescriptor: 'Constructs accurate 5x5 statutory risk matrix applying hierarchy of controls in strict alignment with AS/NZS ISO 31000.',
-              notYetCompetentDescriptor: 'Assessment matrix missing key likelihood/consequence scales or miscategorizes severe risks.',
-              levels: [
-                {
-                  level: 1,
-                  label: 'Level 1 - Not Yet Competent (NYC)',
-                  descriptor: 'Assessment matrix missing key likelihood/consequence scales or miscategorizes severe risks.'
-                },
-                {
-                  level: 2,
-                  label: 'Level 2 - Developing / Threshold',
-                  descriptor: 'Constructs basic matrix but misapplies risk rankings; proposed controls lack hierarchy of control justification.'
-                },
-                {
-                  level: 3,
-                  label: 'Level 3 - Competent (C) / Proficient',
-                  descriptor: 'Constructs accurate 5x5 statutory risk matrix applying hierarchy of controls in strict alignment with AS/NZS ISO 31000.'
-                },
-                {
-                  level: 4,
-                  label: 'Level 4 - Advanced / Accomplished',
-                  descriptor: 'Constructs comprehensive multi-tier risk evaluations with quantitative impact modeling and residual risk forecasting.'
-                },
-                {
-                  level: 5,
-                  label: 'Level 5 - Exemplary / Mastered',
-                  descriptor: 'Masterfully produces industry-benchmark risk registers featuring sensitivity analysis and regulatory defensibility.'
-                }
-              ]
+              competentDescriptor: 'Meets competency benchmark: independently satisfies all performance criteria to required industry quality.',
+              notYetCompetentDescriptor: 'Critical gaps: fails to meet essential execution standards; critical steps omitted.',
+              levels: createDefaultRubricLevels('Demonstration & Execution Rigor')
             },
             {
               id: 'crit-s-2',
-              name: 'Executive Consultation Report & Action Plan',
+              name: 'Analysis, Evaluation & Quality Assurance',
               weight: 50,
-              competentDescriptor: 'Delivers clear, professional executive report with measurable control milestones, review dates, and designated duty holders.',
-              notYetCompetentDescriptor: 'Report lacks actionable recommendations or executive sign-off pathways.',
-              levels: [
-                {
-                  level: 1,
-                  label: 'Level 1 - Not Yet Competent (NYC)',
-                  descriptor: 'Report lacks actionable recommendations or executive sign-off pathways.'
-                },
-                {
-                  level: 2,
-                  label: 'Level 2 - Developing / Threshold',
-                  descriptor: 'Recommendations are generic and lack implementation timelines, review milestones, or resource allocations.'
-                },
-                {
-                  level: 3,
-                  label: 'Level 3 - Competent (C) / Proficient',
-                  descriptor: 'Delivers clear, professional executive report with measurable control milestones, review dates, and designated duty holders.'
-                },
-                {
-                  level: 4,
-                  label: 'Level 4 - Advanced / Accomplished',
-                  descriptor: 'Produces polished executive briefing with cost-benefit analysis and strategic change-management timelines.'
-                },
-                {
-                  level: 5,
-                  label: 'Level 5 - Exemplary / Mastered',
-                  descriptor: 'Publishes board-ready institutional report integrating continuous audit schedules, ROI metrics, and statutory legal sign-offs.'
-                }
-              ]
+              competentDescriptor: 'Meets competency benchmark: produces structured, evidence-based reports adhering to standards.',
+              notYetCompetentDescriptor: 'Critical gaps: analysis lacks structure, evidence, or actionable recommendations.',
+              levels: createDefaultRubricLevels('Analysis, Evaluation & Quality Assurance')
             }
           ]
         }
@@ -1674,7 +1570,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                       {style.label}
                                     </div>
                                     <textarea
-                                      rows={3}
+                                      rows={4}
                                       value={lvl.descriptor}
                                       onChange={(e) => {
                                         const updated = [...course.units];
@@ -1691,7 +1587,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                       data-testid={`rubric-level-${ass.id}-${critIdx}-${lIndex}`}
                                       aria-label={`Descriptor for Level ${lIndex + 1} of ${c.name}`}
                                       className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded p-1.5 text-[10px] text-slate-800 outline-none leading-tight resize-y font-sans"
-                                      placeholder={`Enter Level ${lIndex + 1} performance criteria...`}
+                                      placeholder={`Explain how to think about Level ${lIndex + 1} score...`}
                                     />
                                   </div>
                                 );

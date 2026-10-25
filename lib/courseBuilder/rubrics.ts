@@ -29,34 +29,42 @@ export const DEFAULT_RUBRIC_LEVEL_NAMES: [string, string, string, string, string
   'Level 5 - Exemplary / Mastered'
 ];
 
+export const DEFAULT_GENERIC_RUBRIC_DESCRIPTORS: [string, string, string, string, string] = [
+  'How to think about this score (0–49%): Critical gap in competency. The learner has not yet demonstrated foundational understanding or minimum safety/procedural requirements. Fundamental concepts are missing, inaccurate, or non-compliant. Requires targeted re-instruction and formal re-assessment before competency can be awarded.',
+  'How to think about this score (50–64%): Emerging capability under guidance. The learner grasps basic concepts and attempts routine tasks, but execution is inconsistent, surface-level, or relies on regular scaffolding and supervision. Does not yet demonstrate reliable independent delivery.',
+  'How to think about this score (65–74%): Benchmark for competency. The learner consistently, accurately, and independently satisfies all core performance criteria. Follows standard operating procedures, solves routine workplace problems reliably, and complies with industry requirements without supervision.',
+  'How to think about this score (75–84%): Exceeds baseline competency. The learner demonstrates analytical depth, effectively adapts procedures to non-routine variables or complex workplace situations, justifies decisions with clear evidence, and maintains high standards of quality assurance.',
+  'How to think about this score (85–100%): Comprehensive mastery and leadership. The learner delivers exceptional, insightful work that synthesizes multi-dimensional factors, models industry best practices, anticipates systemic risks, and produces institutional-grade outcomes capable of guiding or mentoring peers.'
+];
+
 export function createDefaultRubricLevels(
-  criterionName: string
+  _criterionName?: string
 ): [RubricLevel, RubricLevel, RubricLevel, RubricLevel, RubricLevel] {
   return [
     {
       level: 1,
       label: DEFAULT_RUBRIC_LEVEL_NAMES[0],
-      descriptor: `Unable to demonstrate foundational knowledge or practical competency for ${criterionName}; key regulatory requirements and critical standards omitted.`
+      descriptor: DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[0]
     },
     {
       level: 2,
       label: DEFAULT_RUBRIC_LEVEL_NAMES[1],
-      descriptor: `Demonstrates partial understanding of ${criterionName}; identifies surface components but lacks systematic rigor or complete compliance.`
+      descriptor: DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[1]
     },
     {
       level: 3,
       label: DEFAULT_RUBRIC_LEVEL_NAMES[2],
-      descriptor: `Consistently meets statutory competency benchmark for ${criterionName}; applies standard methodology accurately with verified evidence.`
+      descriptor: DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[2]
     },
     {
       level: 4,
       label: DEFAULT_RUBRIC_LEVEL_NAMES[3],
-      descriptor: `Demonstrates thorough command of ${criterionName}; analyzes complex workplace variables and produces comprehensive, defensible solutions.`
+      descriptor: DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[3]
     },
     {
       level: 5,
       label: DEFAULT_RUBRIC_LEVEL_NAMES[4],
-      descriptor: `Exemplary mastery of ${criterionName}; innovatively synthesizes industry best practices, mentors peers, and presents board-ready documentation.`
+      descriptor: DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[4]
     }
   ];
 }
@@ -89,12 +97,13 @@ export const CSV_RUBRIC_HEADER =
   'AssessmentType,AssessmentTitle,AssessmentDescription,CriterionName,Weight,Level1_NYC,Level2_Developing,Level3_Competent,Level4_Advanced,Level5_Exemplary';
 
 export function generateRubricsTemplateCsv(): string {
+  const esc = (val: string) => `"${val.replace(/"/g, '""')}"`;
   return [
     CSV_RUBRIC_HEADER,
-    'formative,"Diagnostic WHS Quiz & Consultation Check","Weekly formative check-in on workplace health & safety procedures.","Hazard Identification & Reporting",50,"Unable to identify basic workplace hazards; omits statutory compliance provisions.","Identifies obvious physical hazards only; incomplete statutory references.","Accurately identifies all workplace hazards and cites relevant WHS Act and Regulation provisions.","Identifies compound and systemic risks; articulates cross-departmental liability.","Demonstrates forensic workplace safety analysis and models predictive hazard controls."',
-    'formative,"Diagnostic WHS Quiz & Consultation Check","Weekly formative check-in on workplace health & safety procedures.","Consultative Feedback & Safety Protocol",50,"Does not participate in consultative discussions or fails to record worker safety concerns.","Participates passively; records feedback with significant gaps in consultative protocol.","Actively facilitates consultative safety checks and accurately logs worker inputs according to WHS consultation procedures.","Constructively guides peer safety evaluations; resolves differing risk ratings.","Exemplifies institutional safety leadership; mentors colleagues into proactive policies."',
-    'summative,"Workplace Hazard Identification & Consultative Portfolio","Holistic workplace portfolio containing risk assessments and hierarchy of controls.","Risk Assessment & Control Hierarchy Implementation",50,"Fails to apply the hierarchy of control; suggests ineffective or non-compliant controls.","Applies lower-order administrative controls only without evaluating higher-order engineering solutions.","Systematically applies hierarchy of controls with viable, compliant risk mitigation controls.","Designs multi-tiered control strategies with contingency planning and monitoring mechanisms.","Develops institutional-grade risk management framework compliant with ISO 31000 & WHS regulations."',
-    'summative,"Workplace Hazard Identification & Consultative Portfolio","Holistic workplace portfolio containing risk assessments and hierarchy of controls.","Continuous Improvement & Incident Reporting",50,"Fails to produce structured incident report; omits corrective action timelines.","Recommendations are generic and lack implementation timelines, review milestones, or resource allocations.","Delivers clear, professional executive report with measurable control milestones and review dates.","Produces polished executive briefing with cost-benefit analysis and strategic change-management timelines.","Publishes board-ready institutional report integrating continuous audit schedules and statutory sign-offs."'
+    `formative,"Formative Knowledge Check & Practice Activity","Continuous formative assessment to reinforce key concepts and provide developmental feedback.","Foundational Principles & Knowledge",50,${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[0])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[1])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[2])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[3])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[4])}`,
+    `formative,"Formative Knowledge Check & Practice Activity","Continuous formative assessment to reinforce key concepts and provide developmental feedback.","Applied Problem Solving & Reflection",50,${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[0])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[1])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[2])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[3])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[4])}`,
+    `summative,"Summative Practical Assessment & Portfolio","Formal summative assessment to assess practical competency and evidence of skills against performance standards.","Core Competency Execution & Evidence",50,${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[0])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[1])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[2])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[3])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[4])}`,
+    `summative,"Summative Practical Assessment & Portfolio","Formal summative assessment to assess practical competency and evidence of skills against performance standards.","Analysis, Evaluation & Quality Assurance",50,${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[0])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[1])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[2])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[3])},${esc(DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[4])}`
   ].join('\n') + '\n';
 }
 
