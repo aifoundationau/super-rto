@@ -23,7 +23,6 @@ import {
   listAllFrameworks
 } from '../lib/compliance/frameworks.ts';
 
-// 3. Token & Currency Pricing Tests
 import {
   computeDualPanelPrices,
   toStrictIntegerTokens,
@@ -31,6 +30,16 @@ import {
   getHoverPricingTooltip,
   DEFAULT_GLOBAL_TOKEN_CONFIG
 } from '../lib/tokens/pricing.ts';
+
+// 4. Assessments & 5-Level Rubrics Tests
+import {
+  DEFAULT_RUBRIC_LEVEL_NAMES,
+  createDefaultRubricLevels,
+  parseCsvLine,
+  generateRubricsTemplateCsv,
+  parseRubricsCsv,
+  exportAssessmentsToCsv
+} from '../lib/courseBuilder/rubrics.ts';
 
 describe('Super-RTO Unified Platform Test Suite', () => {
 
@@ -138,6 +147,70 @@ describe('Super-RTO Unified Platform Test Suite', () => {
       // International visitor: AUD is gated, shows USD only
       const international = getHoverPricingTooltip(10, config, false);
       assert.strictEqual(international, '$10.00 USD');
+    });
+  });
+
+  describe('Assessments & 5-Level Rubrics Verification (Formative & Summative)', () => {
+    it('should define all 5 standardized AQF performance levels', () => {
+      assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES.length, 5);
+      assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES[0], 'Level 1 - Not Yet Competent (NYC)');
+      assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES[1], 'Level 2 - Developing / Threshold');
+      assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES[2], 'Level 3 - Competent (C) / Proficient');
+      assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES[3], 'Level 4 - Advanced / Accomplished');
+      assert.strictEqual(DEFAULT_RUBRIC_LEVEL_NAMES[4], 'Level 5 - Exemplary / Mastered');
+    });
+
+    it('should generate 5 fully populated rubric levels for a given criterion', () => {
+      const levels = createDefaultRubricLevels('Hazard Identification');
+      assert.strictEqual(levels.length, 5);
+      levels.forEach((lvl, idx) => {
+        assert.strictEqual(lvl.level, idx + 1);
+        assert.strictEqual(lvl.label, DEFAULT_RUBRIC_LEVEL_NAMES[idx]);
+        assert.ok(lvl.descriptor.length > 20, `Level ${idx + 1} must have a non-trivial descriptor`);
+        assert.ok(lvl.descriptor.includes('Hazard Identification'));
+      });
+    });
+
+    it('should correctly parse CSV lines with quoted commas', () => {
+      const line = 'formative,"Diagnostic WHS Quiz, Form 1","Weekly check-in, WHS",50';
+      const parsed = parseCsvLine(line);
+      assert.strictEqual(parsed.length, 4);
+      assert.strictEqual(parsed[0], 'formative');
+      assert.strictEqual(parsed[1], 'Diagnostic WHS Quiz, Form 1');
+      assert.strictEqual(parsed[2], 'Weekly check-in, WHS');
+      assert.strictEqual(parsed[3], '50');
+    });
+
+    it('should generate and parse rubrics template with Formative and Summative assessments', () => {
+      const template = generateRubricsTemplateCsv();
+      assert.ok(template.includes('AssessmentType,AssessmentTitle'));
+      assert.ok(template.includes('formative'));
+      assert.ok(template.includes('summative'));
+
+      const parsed = parseRubricsCsv(template);
+      assert.strictEqual(parsed.length, 2);
+
+      const formative = parsed.find((a) => a.type === 'formative');
+      assert.ok(formative, 'Must contain formative assessment');
+      assert.strictEqual(formative.criteria.length, 2);
+      assert.strictEqual(formative.criteria[0].levels.length, 5);
+
+      const summative = parsed.find((a) => a.type === 'summative');
+      assert.ok(summative, 'Must contain summative assessment');
+      assert.strictEqual(summative.criteria.length, 2);
+      assert.strictEqual(summative.criteria[0].levels.length, 5);
+    });
+
+    it('should export assessments back to CSV matching 5-level format', () => {
+      const template = generateRubricsTemplateCsv();
+      const parsed = parseRubricsCsv(template);
+      const exported = exportAssessmentsToCsv(parsed);
+
+      assert.ok(exported.startsWith('AssessmentType,AssessmentTitle'));
+      const reParsed = parseRubricsCsv(exported);
+      assert.strictEqual(reParsed.length, 2);
+      assert.strictEqual(reParsed[0].criteria.length, 2);
+      assert.strictEqual(reParsed[0].criteria[0].levels.length, 5);
     });
   });
 

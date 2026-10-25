@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Layers,
   Plus,
@@ -18,7 +18,10 @@ import {
   Paperclip,
   Link2,
   ExternalLink,
-  AlignLeft
+  AlignLeft,
+  Download,
+  Upload,
+  FileSpreadsheet
 } from 'lucide-react';
 import { toStrictIntegerTokens } from '@/lib/tokens/pricing';
 
@@ -49,6 +52,21 @@ export interface LessonBlock {
   links?: LessonBlockLink[];
 }
 
+import {
+  RubricLevel,
+  AssessmentCriterion,
+  CourseAssessment,
+  DEFAULT_RUBRIC_LEVEL_NAMES,
+  createDefaultRubricLevels,
+  parseCsvLine,
+  generateRubricsTemplateCsv,
+  exportAssessmentsToCsv,
+  parseRubricsCsv
+} from '@/lib/courseBuilder/rubrics';
+
+export type { RubricLevel, AssessmentCriterion, CourseAssessment };
+export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine };
+
 export interface CourseUnit {
   id: string;
   unitCode: string;
@@ -62,18 +80,7 @@ export interface CourseUnit {
     estimatedMinutes: number;
     blocks: LessonBlock[];
   }[];
-  assessments: {
-    id: string;
-    type: 'formative' | 'summative';
-    title: string;
-    description: string;
-    criteria: {
-      name: string;
-      weight: number;
-      competentDescriptor: string;
-      notYetCompetentDescriptor: string;
-    }[];
-  }[];
+  assessments: CourseAssessment[];
 }
 
 export interface CourseData {
@@ -164,22 +171,154 @@ const DEFAULT_COURSE: CourseData = {
       ],
       assessments: [
         {
-          id: 'ass-1',
-          type: 'summative',
-          title: 'Workplace Hazard Identification Portfolio',
-          description: 'Conduct a risk assessment of a designated work area and draft a consultative report.',
+          id: 'ass-formative-1',
+          type: 'formative',
+          title: 'Workplace Hazard Recognition Workshop & Formative Quiz',
+          description: 'Continuous formative assessment measuring practical hazard identification, statutory risk evaluation, and peer safety consultation.',
           criteria: [
             {
-              name: 'Hazard Identification & Regulatory Citations',
+              id: 'crit-f-1',
+              name: 'Statutory Hazard Identification & Classification',
               weight: 50,
-              competentDescriptor: 'Accurately identifies all 4 statutory workplace hazards and cites relevant WHS Act clauses.',
-              notYetCompetentDescriptor: 'Omitted 2 or more hazards or failed to reference legislation.'
+              competentDescriptor: 'Accurately identifies all workplace hazards and cites relevant WHS Act and Regulation provisions.',
+              notYetCompetentDescriptor: 'Unable to identify basic workplace hazards; omits statutory compliance provisions.',
+              levels: [
+                {
+                  level: 1,
+                  label: 'Level 1 - Not Yet Competent (NYC)',
+                  descriptor: 'Unable to identify basic workplace hazards; omits statutory compliance provisions and Safe Work Australia standards.'
+                },
+                {
+                  level: 2,
+                  label: 'Level 2 - Developing / Threshold',
+                  descriptor: 'Identifies obvious physical hazards only; incomplete statutory references and limited understanding of latent chemical/biological risks.'
+                },
+                {
+                  level: 3,
+                  label: 'Level 3 - Competent (C) / Proficient',
+                  descriptor: 'Accurately identifies all workplace hazards and cites relevant WHS Act and Regulation provisions with verifiable evidence.'
+                },
+                {
+                  level: 4,
+                  label: 'Level 4 - Advanced / Accomplished',
+                  descriptor: 'Identifies compound and systemic risks; articulates cross-departmental liability and proactive hazard controls.'
+                },
+                {
+                  level: 5,
+                  label: 'Level 5 - Exemplary / Mastered',
+                  descriptor: 'Demonstrates forensic workplace safety analysis; models predictive hazards and integrates industry best practices into consultation logs.'
+                }
+              ]
             },
             {
-              name: 'Consultative Recommendations',
+              id: 'crit-f-2',
+              name: 'Consultative Feedback & Peer Safety Protocol',
               weight: 50,
-              competentDescriptor: 'Demonstrates clear hierarchy of controls with stakeholder consultation evidence.',
-              notYetCompetentDescriptor: 'Controls do not follow the hierarchy or lack consultation logs.'
+              competentDescriptor: 'Actively facilitates consultative safety checks and accurately logs worker inputs according to WHS consultation procedures.',
+              notYetCompetentDescriptor: 'Does not participate in consultative discussions or fail to record worker safety concerns.',
+              levels: [
+                {
+                  level: 1,
+                  label: 'Level 1 - Not Yet Competent (NYC)',
+                  descriptor: 'Does not participate in consultative discussions or fails to record worker safety concerns.'
+                },
+                {
+                  level: 2,
+                  label: 'Level 2 - Developing / Threshold',
+                  descriptor: 'Participates passively; records feedback with significant gaps in consultative protocol or worker representation.'
+                },
+                {
+                  level: 3,
+                  label: 'Level 3 - Competent (C) / Proficient',
+                  descriptor: 'Actively facilitates consultative safety checks and accurately logs worker inputs according to WHS consultation procedures.'
+                },
+                {
+                  level: 4,
+                  label: 'Level 4 - Advanced / Accomplished',
+                  descriptor: 'Constructively guides peer safety evaluations; resolves differing risk ratings through consultative evidence and consensus.'
+                },
+                {
+                  level: 5,
+                  label: 'Level 5 - Exemplary / Mastered',
+                  descriptor: 'Exemplifies institutional safety leadership; mentors colleagues and synthesizes multi-stakeholder feedback into proactive policies.'
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'ass-summative-1',
+          type: 'summative',
+          title: 'Workplace Hazard Identification & Consultative Portfolio',
+          description: 'Comprehensive summative capstone portfolio assessing end-to-end risk assessment, statutory compliance documentation, and formal consultative management presentation.',
+          criteria: [
+            {
+              id: 'crit-s-1',
+              name: 'Statutory Risk Assessment Matrix (ISO 31000)',
+              weight: 50,
+              competentDescriptor: 'Constructs accurate 5x5 statutory risk matrix applying hierarchy of controls in strict alignment with AS/NZS ISO 31000.',
+              notYetCompetentDescriptor: 'Assessment matrix missing key likelihood/consequence scales or miscategorizes severe risks.',
+              levels: [
+                {
+                  level: 1,
+                  label: 'Level 1 - Not Yet Competent (NYC)',
+                  descriptor: 'Assessment matrix missing key likelihood/consequence scales or miscategorizes severe risks.'
+                },
+                {
+                  level: 2,
+                  label: 'Level 2 - Developing / Threshold',
+                  descriptor: 'Constructs basic matrix but misapplies risk rankings; proposed controls lack hierarchy of control justification.'
+                },
+                {
+                  level: 3,
+                  label: 'Level 3 - Competent (C) / Proficient',
+                  descriptor: 'Constructs accurate 5x5 statutory risk matrix applying hierarchy of controls in strict alignment with AS/NZS ISO 31000.'
+                },
+                {
+                  level: 4,
+                  label: 'Level 4 - Advanced / Accomplished',
+                  descriptor: 'Constructs comprehensive multi-tier risk evaluations with quantitative impact modeling and residual risk forecasting.'
+                },
+                {
+                  level: 5,
+                  label: 'Level 5 - Exemplary / Mastered',
+                  descriptor: 'Masterfully produces industry-benchmark risk registers featuring sensitivity analysis and regulatory defensibility.'
+                }
+              ]
+            },
+            {
+              id: 'crit-s-2',
+              name: 'Executive Consultation Report & Action Plan',
+              weight: 50,
+              competentDescriptor: 'Delivers clear, professional executive report with measurable control milestones, review dates, and designated duty holders.',
+              notYetCompetentDescriptor: 'Report lacks actionable recommendations or executive sign-off pathways.',
+              levels: [
+                {
+                  level: 1,
+                  label: 'Level 1 - Not Yet Competent (NYC)',
+                  descriptor: 'Report lacks actionable recommendations or executive sign-off pathways.'
+                },
+                {
+                  level: 2,
+                  label: 'Level 2 - Developing / Threshold',
+                  descriptor: 'Recommendations are generic and lack implementation timelines, review milestones, or resource allocations.'
+                },
+                {
+                  level: 3,
+                  label: 'Level 3 - Competent (C) / Proficient',
+                  descriptor: 'Delivers clear, professional executive report with measurable control milestones, review dates, and designated duty holders.'
+                },
+                {
+                  level: 4,
+                  label: 'Level 4 - Advanced / Accomplished',
+                  descriptor: 'Produces polished executive briefing with cost-benefit analysis and strategic change-management timelines.'
+                },
+                {
+                  level: 5,
+                  label: 'Level 5 - Exemplary / Mastered',
+                  descriptor: 'Publishes board-ready institutional report integrating continuous audit schedules, ROI metrics, and statutory legal sign-offs.'
+                }
+              ]
             }
           ]
         }
@@ -197,6 +336,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [deletingLessonId, setDeletingLessonId] = useState<string | null>(null);
   const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
   const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
+  const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
+  const [deletingCriterionId, setDeletingCriterionId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeUnit = course.units[activeUnitIndex] || course.units[0];
 
@@ -370,6 +512,131 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setIsAiModalOpen(false);
     setStatusMessage('✨ Course successfully synthesized with AI Ingest (10 tokens applied).');
     setTimeout(() => setStatusMessage(null), 4000);
+  };
+
+  const handleAddAssessment = (type: 'formative' | 'summative') => {
+    const isFormative = type === 'formative';
+    const defaultCritTitle = isFormative ? 'Foundational Knowledge Application' : 'Core Industry Competency & Evidence';
+    const newAssessment: CourseAssessment = {
+      id: `ass-${type}-${Date.now()}`,
+      type,
+      title: isFormative ? 'Formative Knowledge Check & Practice Activity' : 'Summative Practical Assessment & Portfolio',
+      description: isFormative
+        ? 'Continuous formative assessment to reinforce key concepts and provide developmental feedback before final competency evaluation.'
+        : 'Formal summative assessment to assess practical competency and evidence of skills against AQF performance standards.',
+      criteria: [
+        {
+          id: `crit-${Date.now()}-1`,
+          name: defaultCritTitle,
+          weight: 100,
+          competentDescriptor: 'Consistently meets required competency benchmark with verified practical evidence.',
+          notYetCompetentDescriptor: 'Does not yet meet benchmark requirements; gaps identified in foundational knowledge or execution.',
+          levels: createDefaultRubricLevels(defaultCritTitle)
+        }
+      ]
+    };
+    const updated = [...course.units];
+    if (!updated[activeUnitIndex].assessments) {
+      updated[activeUnitIndex].assessments = [];
+    }
+    updated[activeUnitIndex].assessments.push(newAssessment);
+    setCourse({ ...course, units: updated });
+    setStatusMessage(`✨ Added new ${type} assessment.`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleDeleteAssessment = (assIdx: number) => {
+    const updated = [...course.units];
+    updated[activeUnitIndex].assessments.splice(assIdx, 1);
+    setCourse({ ...course, units: updated });
+    setDeletingAssessmentId(null);
+    setStatusMessage('Assessment deleted.');
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleAddCriterion = (assIdx: number) => {
+    const updated = [...course.units];
+    const critCount = updated[activeUnitIndex].assessments[assIdx].criteria.length + 1;
+    const critTitle = `Performance Criterion ${critCount}`;
+    const newCriterion: AssessmentCriterion = {
+      id: `crit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: critTitle,
+      weight: 20,
+      competentDescriptor: `Consistently meets required competency benchmark for ${critTitle}.`,
+      notYetCompetentDescriptor: `Does not yet meet benchmark requirements for ${critTitle}.`,
+      levels: createDefaultRubricLevels(critTitle)
+    };
+    updated[activeUnitIndex].assessments[assIdx].criteria.push(newCriterion);
+    setCourse({ ...course, units: updated });
+  };
+
+  const handleDeleteCriterion = (assIdx: number, critIdx: number) => {
+    const updated = [...course.units];
+    updated[activeUnitIndex].assessments[assIdx].criteria.splice(critIdx, 1);
+    setCourse({ ...course, units: updated });
+    setDeletingCriterionId(null);
+  };
+
+  const handleDownloadCsvTemplate = () => {
+    const csvContent = generateRubricsTemplateCsv();
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'assessments_rubrics_5levels_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportCurrentRubricsCsv = () => {
+    const csvContent = exportAssessmentsToCsv(activeUnit.assessments || []);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${activeUnit.unitCode || 'unit'}_assessments_rubrics.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text || !text.trim()) {
+          setStatusMessage('Uploaded CSV file is empty.');
+          return;
+        }
+
+        const importedAssessments = parseRubricsCsv(text);
+        if (importedAssessments.length === 0) {
+          setStatusMessage('No valid assessment rows could be extracted from the CSV.');
+          return;
+        }
+
+        const updatedUnits = [...course.units];
+        updatedUnits[activeUnitIndex].assessments = importedAssessments;
+        setCourse({ ...course, units: updatedUnits });
+        setStatusMessage(`✨ Successfully imported ${importedAssessments.length} assessment(s) with 5-level rubrics from CSV.`);
+        setTimeout(() => setStatusMessage(null), 5000);
+      } catch (err) {
+        console.error('Failed to parse assessment rubrics CSV:', err);
+        setStatusMessage('Error reading CSV file. Please verify CSV format against the template.');
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -1083,35 +1350,359 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 )}
               </div>
 
-              {/* Assessments */}
-              <div className="space-y-3 pt-3 border-t border-slate-200">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <Award className="w-4 h-4 text-amber-600" />
-                  <span>Assessments & Rubrics (C / NYC)</span>
-                </h4>
-
-                {activeUnit.assessments.map((ass) => (
-                  <div key={ass.id} className="bg-white border border-amber-300 rounded-xl p-3.5 text-xs space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">{ass.title}</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                        {ass.type.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-[11px]">{ass.description}</p>
-                    <div className="space-y-1 pt-1">
-                      {ass.criteria.map((c, i) => (
-                        <div key={i} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[11px] flex justify-between">
-                          <div>
-                            <span className="font-bold text-slate-800">{c.name} ({c.weight}%)</span>
-                            <div className="text-[10px] text-emerald-700 mt-0.5 font-medium">Competent: {c.competentDescriptor}</div>
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-mono font-semibold">Weight: {c.weight}%</span>
-                        </div>
-                      ))}
-                    </div>
+              {/* Assessments & Rubrics (Summative & Formative with 5 Levels) */}
+              <div className="space-y-4 pt-4 border-t border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Award className="w-4 h-4 text-amber-600" />
+                      <span>Assessments & Rubrics (Summative & Formative)</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      AQF competency rubrics with 5 performance levels (NYC to Exemplary) & CSV import/export.
+                    </p>
                   </div>
-                ))}
+
+                  {/* Assessment Actions Toolbar */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAddAssessment('formative')}
+                      data-agent-id="course-builder-add-formative-btn"
+                      data-testid="add-formative-btn"
+                      aria-label="Add Formative Assessment"
+                      className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-teal-600" /> + Formative
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddAssessment('summative')}
+                      data-agent-id="course-builder-add-summative-btn"
+                      data-testid="add-summative-btn"
+                      aria-label="Add Summative Assessment"
+                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-amber-600" /> + Summative
+                    </button>
+
+                    {/* CSV Upload */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleCsvUpload}
+                      accept=".csv"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      data-agent-id="course-builder-upload-csv-btn"
+                      data-testid="upload-csv-btn"
+                      aria-label="Upload Assessment Rubrics CSV"
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Upload custom assessments with 5-level rubrics via CSV"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-slate-600" /> Upload CSV
+                    </button>
+
+                    {/* CSV Template Download */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadCsvTemplate}
+                      data-agent-id="course-builder-download-csv-template-btn"
+                      data-testid="download-csv-template-btn"
+                      aria-label="Download CSV Rubric Template"
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Download sample CSV template with 5 rubric levels"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-600" /> Template
+                    </button>
+
+                    {/* Export Current Rubrics */}
+                    <button
+                      type="button"
+                      onClick={handleExportCurrentRubricsCsv}
+                      data-agent-id="course-builder-export-rubrics-btn"
+                      data-testid="export-rubrics-btn"
+                      aria-label="Export Active Unit Rubrics as CSV"
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                      title="Export current unit assessments and rubrics as CSV"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" /> Export CSV
+                    </button>
+                  </div>
+                </div>
+
+                {statusMessage && (
+                  <div className="p-2.5 rounded-lg text-xs font-medium bg-slate-100 border border-slate-300 text-slate-800 flex items-center justify-between animate-in fade-in">
+                    <span>{statusMessage}</span>
+                    <button
+                      type="button"
+                      onClick={() => setStatusMessage(null)}
+                      className="text-slate-400 hover:text-slate-700 ml-2"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {activeUnit.assessments.length === 0 ? (
+                  <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
+                    <Award className="w-8 h-8 text-slate-400 mx-auto" />
+                    <p className="text-xs font-bold text-slate-700">No assessments defined for this unit.</p>
+                    <p className="text-[11px] text-slate-500">
+                      Click &ldquo;+ Formative&rdquo;, &ldquo;+ Summative&rdquo;, or &ldquo;Upload CSV&rdquo; to populate assessment rubrics with 5 levels.
+                    </p>
+                  </div>
+                ) : (
+                  activeUnit.assessments.map((ass, assIdx) => (
+                    <div
+                      key={ass.id}
+                      className={`bg-white border rounded-xl p-4 text-xs space-y-3 shadow-2xs ${
+                        ass.type === 'formative' ? 'border-teal-300' : 'border-amber-300'
+                      }`}
+                    >
+                      {/* Assessment Header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0 ${
+                              ass.type === 'formative'
+                                ? 'bg-teal-50 text-teal-800 border-teal-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                            }`}
+                          >
+                            {ass.type}
+                          </span>
+                          <input
+                            type="text"
+                            value={ass.title}
+                            onChange={(e) => {
+                              const updated = [...course.units];
+                              updated[activeUnitIndex].assessments[assIdx].title = e.target.value;
+                              setCourse({ ...course, units: updated });
+                            }}
+                            data-agent-id={`course-builder-assessment-title-input-${ass.id}`}
+                            data-testid={`course-builder-assessment-title-${ass.id}`}
+                            aria-label={`Title for Assessment ${assIdx + 1}`}
+                            className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5 flex-1 min-w-[140px]"
+                            placeholder="Assessment Title..."
+                          />
+                        </div>
+
+                        {/* Assessment Deletion with Two-step Confirmation */}
+                        <div className="shrink-0 flex items-center">
+                          {deletingAssessmentId === ass.id ? (
+                            <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAssessment(assIdx)}
+                                data-agent-id={`course-builder-confirm-delete-assessment-${ass.id}-btn`}
+                                data-testid={`confirm-delete-assessment-${ass.id}`}
+                                aria-label={`Confirm Delete Assessment ${ass.title}`}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingAssessmentId(null)}
+                                data-agent-id={`course-builder-cancel-delete-assessment-${ass.id}-btn`}
+                                data-testid={`cancel-delete-assessment-${ass.id}`}
+                                aria-label="Cancel delete assessment"
+                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeletingAssessmentId(ass.id)}
+                              data-agent-id={`course-builder-delete-assessment-${ass.id}-btn`}
+                              data-testid={`delete-assessment-${ass.id}`}
+                              aria-label={`Delete Assessment ${ass.title}`}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                              title="Delete Assessment"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Assessment Description */}
+                      <textarea
+                        rows={2}
+                        value={ass.description}
+                        onChange={(e) => {
+                          const updated = [...course.units];
+                          updated[activeUnitIndex].assessments[assIdx].description = e.target.value;
+                          setCourse({ ...course, units: updated });
+                        }}
+                        data-agent-id={`course-builder-assessment-description-input-${ass.id}`}
+                        data-testid={`course-builder-assessment-description-${ass.id}`}
+                        aria-label={`Description for ${ass.title}`}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-indigo-600 focus:bg-white transition-colors"
+                        placeholder="Assessment instructions, scope, evidence submission criteria..."
+                      />
+
+                      {/* Criteria & 5-Level Rubrics */}
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                            Performance Criteria & 5-Level Rubrics
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddCriterion(assIdx)}
+                            data-agent-id={`course-builder-add-criterion-${ass.id}-btn`}
+                            data-testid={`add-criterion-${ass.id}`}
+                            aria-label={`Add Criterion to Assessment ${ass.title}`}
+                            className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[10px] text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-1 transition-colors"
+                          >
+                            <Plus className="w-3 h-3 text-indigo-600" /> + Add Criterion
+                          </button>
+                        </div>
+
+                        {ass.criteria.map((c, critIdx) => (
+                          <div key={c.id || critIdx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                            {/* Criterion Header */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-mono text-[9px] font-bold shrink-0">
+                                  {critIdx + 1}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={c.name}
+                                  onChange={(e) => {
+                                    const updated = [...course.units];
+                                    updated[activeUnitIndex].assessments[assIdx].criteria[critIdx].name = e.target.value;
+                                    setCourse({ ...course, units: updated });
+                                  }}
+                                  data-agent-id={`course-builder-criterion-name-input-${c.id || critIdx}`}
+                                  data-testid={`course-builder-criterion-name-${c.id || critIdx}`}
+                                  aria-label={`Name for Criterion ${critIdx + 1}`}
+                                  className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-800 outline-none px-1 py-0.5 flex-1 min-w-[120px]"
+                                  placeholder="Criterion Name..."
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono font-semibold">
+                                  <span>Weight:</span>
+                                  <input
+                                    type="number"
+                                    value={c.weight}
+                                    onChange={(e) => {
+                                      const updated = [...course.units];
+                                      updated[activeUnitIndex].assessments[assIdx].criteria[critIdx].weight = parseInt(e.target.value) || 0;
+                                      setCourse({ ...course, units: updated });
+                                    }}
+                                    data-agent-id={`course-builder-criterion-weight-input-${c.id || critIdx}`}
+                                    data-testid={`course-builder-criterion-weight-${c.id || critIdx}`}
+                                    aria-label={`Weight for Criterion ${c.name}`}
+                                    className="w-10 px-1 py-0.5 text-[10px] font-mono border border-slate-200 rounded text-center outline-none focus:border-indigo-600 bg-white"
+                                  />
+                                  <span>%</span>
+                                </div>
+
+                                {deletingCriterionId === (c.id || `${ass.id}-${critIdx}`) ? (
+                                  <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteCriterion(assIdx, critIdx)}
+                                      data-agent-id={`course-builder-confirm-delete-criterion-${c.id || critIdx}-btn`}
+                                      data-testid={`confirm-delete-criterion-${c.id || critIdx}`}
+                                      aria-label={`Confirm Delete Criterion ${c.name}`}
+                                      className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-0.5"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" /> Confirm
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingCriterionId(null)}
+                                      data-agent-id={`course-builder-cancel-delete-criterion-${c.id || critIdx}-btn`}
+                                      data-testid={`cancel-delete-criterion-${c.id || critIdx}`}
+                                      aria-label="Cancel delete criterion"
+                                      className="px-1 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-[9px]"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingCriterionId(c.id || `${ass.id}-${critIdx}`)}
+                                    data-agent-id={`course-builder-delete-criterion-${c.id || critIdx}-btn`}
+                                    data-testid={`delete-criterion-${c.id || critIdx}`}
+                                    aria-label={`Delete Criterion ${c.name}`}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="Delete Criterion"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 5 Rubric Levels Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-2 pt-1">
+                              {(c.levels || createDefaultRubricLevels(c.name)).map((lvl, lIndex) => {
+                                const levelColors = [
+                                  { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800', badge: 'bg-rose-100 text-rose-900 border-rose-300', label: 'NYC / Novice (0–49%)' },
+                                  { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Developing (50–64%)' },
+                                  { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800', badge: 'bg-emerald-100 text-emerald-900 border-emerald-300', label: 'Competent (65–74%)' },
+                                  { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', badge: 'bg-sky-100 text-sky-900 border-sky-300', label: 'Advanced (75–84%)' },
+                                  { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', badge: 'bg-purple-100 text-purple-900 border-purple-300', label: 'Exemplary (85–100%)' }
+                                ];
+                                const style = levelColors[lIndex] || levelColors[0];
+
+                                return (
+                                  <div
+                                    key={lIndex}
+                                    className={`p-2 rounded-lg border ${style.bg} ${style.border} space-y-1`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className={`text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded border ${style.badge}`}>
+                                        Level {lvl.level || (lIndex + 1)}
+                                      </span>
+                                    </div>
+                                    <div className={`text-[9px] font-bold ${style.text}`}>
+                                      {style.label}
+                                    </div>
+                                    <textarea
+                                      rows={3}
+                                      value={lvl.descriptor}
+                                      onChange={(e) => {
+                                        const updated = [...course.units];
+                                        const targetCrit = updated[activeUnitIndex].assessments[assIdx].criteria[critIdx];
+                                        if (!targetCrit.levels) {
+                                          targetCrit.levels = createDefaultRubricLevels(targetCrit.name);
+                                        }
+                                        targetCrit.levels[lIndex].descriptor = e.target.value;
+                                        if (lIndex === 2) targetCrit.competentDescriptor = e.target.value;
+                                        if (lIndex === 0) targetCrit.notYetCompetentDescriptor = e.target.value;
+                                        setCourse({ ...course, units: updated });
+                                      }}
+                                      data-agent-id={`course-builder-rubric-level-${ass.id}-${critIdx}-${lIndex}`}
+                                      data-testid={`rubric-level-${ass.id}-${critIdx}-${lIndex}`}
+                                      aria-label={`Descriptor for Level ${lIndex + 1} of ${c.name}`}
+                                      className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded p-1.5 text-[10px] text-slate-800 outline-none leading-tight resize-y font-sans"
+                                      placeholder={`Enter Level ${lIndex + 1} performance criteria...`}
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
             </div>

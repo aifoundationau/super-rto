@@ -148,17 +148,25 @@ export const CourseUnitContract = z.object({
     blocks: z.array(CourseBuilderBlockContract)
   })),
   assessments: z.array(z.object({
-    id: z.string().uuid(),
+    id: z.string(),
     type: z.enum(['formative', 'summative']),
     title: z.string().min(1).max(150),
     description: z.string().max(4000),
     criteria: z.array(z.object({
-      criterionTitle: z.string(),
-      weight: z.number().min(1).max(100),
-      competentDescriptor: z.string(),
-      notYetCompetentDescriptor: z.string()
-    }))
-  }))
+      id: z.string(),
+      name: z.string().min(1).max(150),
+      weight: z.number().int().min(1).max(100),
+      competentDescriptor: z.string().optional(),
+      notYetCompetentDescriptor: z.string().optional(),
+      levels: z.tuple([
+        z.object({ level: z.literal(1), label: z.string(), descriptor: z.string() }).strict(),
+        z.object({ level: z.literal(2), label: z.string(), descriptor: z.string() }).strict(),
+        z.object({ level: z.literal(3), label: z.string(), descriptor: z.string() }).strict(),
+        z.object({ level: z.literal(4), label: z.string(), descriptor: z.string() }).strict(),
+        z.object({ level: z.literal(5), label: z.string(), descriptor: z.string() }).strict()
+      ])
+    }).strict())
+  }).strict())
 }).strict();
 ```
 
