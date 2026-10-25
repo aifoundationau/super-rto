@@ -383,6 +383,29 @@ describe('Super-RTO Unified Platform Test Suite', () => {
       assert.ok(content.includes('data-testid="performance-criteria-card"'));
       assert.ok(content.includes('data-agent-id="course-builder-toggle-performance-criteria-btn"'));
     });
+
+    it('should verify that Performance Criteria is not in assessments and assessments strictly use Scoring Rubrics', () => {
+      const filePath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const content = fs.readFileSync(filePath, 'utf8');
+
+      // The assessment section begins after toggle-assessments-section-btn and ends at Units of Competency
+      const assStartIndex = content.indexOf('data-testid="toggle-assessments-section-btn"');
+      const assEndIndex = content.indexOf('Units of Competency');
+      const assessmentContent = content.slice(assStartIndex, assEndIndex);
+
+      assert.ok(
+        !assessmentContent.toLowerCase().includes('performance criteria'),
+        'Assessment section must NOT contain Performance Criteria'
+      );
+      assert.ok(
+        !assessmentContent.includes('PC 1'),
+        'Assessment rubric items must not use PC prefix'
+      );
+      assert.ok(
+        assessmentContent.includes('5-Level AQF Scoring Rubrics'),
+        'Assessment section must strictly use Scoring Rubrics'
+      );
+    });
   });
 
 });

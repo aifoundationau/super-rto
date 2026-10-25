@@ -244,7 +244,7 @@ const DEFAULT_COURSE: CourseData = {
               id: 'crit-s-1',
               name: 'Demonstration & Execution Rigor',
               weight: 50,
-              competentDescriptor: 'Meets competency benchmark: independently satisfies all performance criteria to required industry quality.',
+              competentDescriptor: 'Meets competency benchmark: independently satisfies all assessment rubric criteria to required industry quality.',
               notYetCompetentDescriptor: 'Critical gaps: fails to meet essential execution standards; critical steps omitted.',
               levels: createDefaultRubricLevels('Demonstration & Execution Rigor')
             },
@@ -1490,7 +1490,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         <div className="space-y-3 pt-2">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                              Performance Criteria &amp; 5-Level AQF Scoring Rubrics ({ass.criteria.length})
+                              5-Level AQF Scoring Rubrics &amp; Assessment Criteria ({ass.criteria.length})
                             </span>
                             <span className="text-[10px] text-slate-500 font-mono">
                               Total Weight: {ass.criteria.reduce((acc, c) => acc + (c.weight || 0), 0)}%
@@ -1514,7 +1514,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                       onClick={() => toggleCriterionCollapse(c.id)}
                                       data-agent-id={`course-builder-toggle-criterion-${c.id}-btn`}
                                       data-testid={`toggle-criterion-${c.id}`}
-                                      aria-label={`Toggle Performance Criterion ${c.name}`}
+                                      aria-label={`Toggle Rubric Criterion ${c.name}`}
                                       aria-expanded={!isCriterionCollapsed}
                                       className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
                                       title={isCriterionCollapsed ? 'Expand Rubric Levels' : 'Collapse Rubric Levels'}
@@ -1526,7 +1526,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                       )}
                                     </button>
                                     <span className="font-mono text-[10px] font-bold text-indigo-700 shrink-0">
-                                      PC {cIdx + 1}
+                                      Rubric {cIdx + 1}
                                     </span>
                                     <input
                                       type="text"
@@ -1591,9 +1591,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                         onClick={() => setDeletingCriterionId(c.id)}
                                         data-agent-id={`course-builder-delete-criterion-${c.id}-btn`}
                                         data-testid={`delete-criterion-${c.id}`}
-                                        aria-label={`Delete Performance Criterion ${c.name}`}
+                                        aria-label={`Delete Rubric Criterion ${c.name}`}
                                         className="p-1 text-slate-400 hover:text-rose-600 transition-colors rounded hover:bg-rose-50"
-                                        title="Delete Performance Criterion"
+                                        title="Delete Rubric Criterion"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
                                       </button>
