@@ -99,6 +99,12 @@ export const SYSTEM_PERMISSIONS: SystemPermission[] = [
     category: 'Finance & Operations',
   },
   {
+    id: 'tokens.rates.director',
+    name: 'Configure Director Token Exchange Rates',
+    description: 'Adjust institutional token pegging, fiat conversion limits, and token rate floors.',
+    category: 'Finance & Operations',
+  },
+  {
     id: 'events.manage',
     name: 'Manage Campus Events & RSVPs',
     description: 'Create and administer campus masterclasses, workshops, orientation days, and reservations.',
@@ -166,6 +172,18 @@ export const SYSTEM_PERMISSIONS: SystemPermission[] = [
     id: 'campus_metrics.manage',
     name: 'Manage Campus Metrics & Analytics',
     description: 'Analyze campus-wide enrollment conversion, retention rates, and institutional KPI targets.',
+    category: 'Administration & Governance',
+  },
+  {
+    id: 'institution.defaults.manage',
+    name: 'Manage Institutional Defaults & Settings',
+    description: 'Configure default institutional profiles, operational benchmarks, and organizational governance.',
+    category: 'Administration & Governance',
+  },
+  {
+    id: 'compliance.framework.manage',
+    name: 'Manage Compliance & Regulatory Frameworks',
+    description: 'Configure ASQA, TEQSA, CRICOS standards, audits, and compliance mappings.',
     category: 'Administration & Governance',
   },
 ];
@@ -316,6 +334,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'users.manage',
     'rules.manage',
     'campus_metrics.manage',
+    'tokens.rates.director',
+    'institution.defaults.manage',
+    'compliance.framework.manage',
   ],
 };
 
