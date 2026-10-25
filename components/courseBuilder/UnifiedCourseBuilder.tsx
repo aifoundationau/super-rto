@@ -12,15 +12,39 @@ import {
   FileText,
   Clock,
   BookOpen,
-  Award
+  Award,
+  Presentation,
+  FolderOpen,
+  Paperclip,
+  Link2,
+  ExternalLink
 } from 'lucide-react';
 import { toStrictIntegerTokens } from '@/lib/tokens/pricing';
 
+export interface LessonBlockLink {
+  id: string;
+  title: string;
+  url: string;
+}
+
 export interface LessonBlock {
   id: string;
-  type: 'text_description' | 'teacher_guide' | 'youtube_video' | 'google_drive_link' | 'file_upload' | 'quiz';
+  type:
+    | 'presentation'
+    | 'video'
+    | 'drive'
+    | 'file'
+    | 'notebook'
+    | 'quiz'
+    | 'text_description'
+    | 'teacher_guide'
+    | 'youtube_video'
+    | 'google_drive_link'
+    | 'file_upload';
   title: string;
-  content: string;
+  url?: string;
+  content?: string;
+  links?: LessonBlockLink[];
 }
 
 export interface CourseUnit {
@@ -83,21 +107,47 @@ const DEFAULT_COURSE: CourseData = {
           blocks: [
             {
               id: 'blk-1',
-              type: 'text_description',
-              title: 'Harmonised WHS Legislation Overview',
-              content: 'Australian WHS Acts require employers to ensure the health and safety of workers so far as is reasonably practicable. Generative AI tools may be consulted for research synthesis under academic integrity policies.'
+              type: 'presentation',
+              title: 'WHS Harmonisation & Duty Holders Slides',
+              url: 'https://docs.google.com/presentation/d/demo-whs-framework/edit',
+              links: [
+                {
+                  id: 'link-1-1',
+                  title: 'Primary Slide Deck (Google Slides)',
+                  url: 'https://docs.google.com/presentation/d/demo-whs-framework/edit'
+                },
+                {
+                  id: 'link-1-2',
+                  title: 'Presentation Handout & Notes (PDF)',
+                  url: 'https://drive.google.com/file/d/demo-notes/view'
+                }
+              ]
             },
             {
               id: 'blk-2',
-              type: 'teacher_guide',
-              title: 'Pedagogical Scaffolding & Student Wellbeing',
-              content: '0-15m: Introduction to Safe Work Australia principles. 15-30m: Small group hazard scenario analysis. 30-45m: Formative check-in on student comprehension.'
+              type: 'video',
+              title: 'Safe Work Australia: Practical Risk Management',
+              url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+              links: [
+                {
+                  id: 'link-2-1',
+                  title: 'Safety Risk Assessment Video',
+                  url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+                }
+              ]
             },
             {
               id: 'blk-3',
-              type: 'youtube_video',
-              title: 'Safe Work Australia: Practical Risk Management',
-              content: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+              type: 'notebook',
+              title: 'WHS Incident Analysis & Research Notebook',
+              url: 'https://colab.research.google.com/drive/demo-whs-risk-modeling',
+              links: [
+                {
+                  id: 'link-3-1',
+                  title: 'Interactive Research Notebook (Google Colab)',
+                  url: 'https://colab.research.google.com/drive/demo-whs-risk-modeling'
+                }
+              ]
             }
           ]
         }
@@ -136,6 +186,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [deletingLessonId, setDeletingLessonId] = useState<string | null>(null);
   const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
+  const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
 
   const activeUnit = course.units[activeUnitIndex] || course.units[0];
 
@@ -165,9 +216,16 @@ export const UnifiedCourseBuilder: React.FC = () => {
       blocks: [
         {
           id: `blk-${Date.now()}-1`,
-          type: 'text_description',
-          title: 'Core Theory & Concepts',
-          content: 'Lesson content here.'
+          type: 'presentation',
+          title: 'Lesson Presentation Slides',
+          url: '',
+          links: [
+            {
+              id: `link-${Date.now()}-1`,
+              title: 'Primary Presentation Deck',
+              url: ''
+            }
+          ]
         }
       ]
     });
@@ -183,19 +241,35 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const handleAddBlock = (unitIdx: number, lessonIdx: number, type: LessonBlock['type']) => {
     const updatedUnits = [...course.units];
-    const defaultTitles: Record<LessonBlock['type'], string> = {
-      text_description: 'Core Theory & Concepts',
-      teacher_guide: 'Teacher Pedagogy Guide',
-      youtube_video: 'Video Lecture',
-      google_drive_link: 'Google Drive Resource',
-      file_upload: 'Attached Coursework File',
-      quiz: 'Formative Knowledge Check'
+    const defaultMeta: Record<string, { title: string; defaultLinkTitle: string }> = {
+      presentation: { title: 'Presentation Slide Deck', defaultLinkTitle: 'Presentation Slides URL' },
+      video: { title: 'Video Lecture', defaultLinkTitle: 'Video Lecture URL' },
+      drive: { title: 'Google Drive Resource', defaultLinkTitle: 'Google Drive Folder URL' },
+      file: { title: 'Coursework File Attachment', defaultLinkTitle: 'Coursework File URL' },
+      notebook: { title: 'Google Notebook / Colab', defaultLinkTitle: 'Google Colab Notebook URL' },
+      quiz: { title: 'Knowledge Check Quiz', defaultLinkTitle: 'Quiz / Form URL' },
+      text_description: { title: 'Theory & Reference Material', defaultLinkTitle: 'Theory Document URL' },
+      teacher_guide: { title: 'Teacher Pedagogy Guide', defaultLinkTitle: 'Pedagogy Guide URL' },
+      youtube_video: { title: 'Video Lecture', defaultLinkTitle: 'Video URL' },
+      google_drive_link: { title: 'Google Drive Resource', defaultLinkTitle: 'Drive URL' },
+      file_upload: { title: 'Coursework File Attachment', defaultLinkTitle: 'File URL' }
     };
+    const meta = defaultMeta[type] || { title: 'Resource Element', defaultLinkTitle: 'Resource URL' };
+    const newBlockId = `blk-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const newLinkId = `link-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
     updatedUnits[unitIdx].lessons[lessonIdx].blocks.push({
-      id: `blk-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: newBlockId,
       type,
-      title: defaultTitles[type] || 'Resource Block',
-      content: ''
+      title: meta.title,
+      url: '',
+      links: [
+        {
+          id: newLinkId,
+          title: meta.defaultLinkTitle,
+          url: ''
+        }
+      ]
     });
     setCourse({ ...course, units: updatedUnits });
   };
@@ -205,6 +279,48 @@ export const UnifiedCourseBuilder: React.FC = () => {
     updatedUnits[unitIdx].lessons[lessonIdx].blocks.splice(blockIdx, 1);
     setCourse({ ...course, units: updatedUnits });
     setDeletingBlockId(null);
+  };
+
+  const handleAddLinkToBlock = (
+    unitIdx: number,
+    lessonIdx: number,
+    blockIdx: number,
+    linkPresetTitle?: string
+  ) => {
+    const updatedUnits = [...course.units];
+    const block = updatedUnits[unitIdx].lessons[lessonIdx].blocks[blockIdx];
+    if (!block.links) {
+      block.links = [];
+      if (block.url) {
+        block.links.push({
+          id: `link-${Date.now()}-0`,
+          title: `${block.title} (Primary Link)`,
+          url: block.url
+        });
+      }
+    }
+    const newLink: LessonBlockLink = {
+      id: `link-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: linkPresetTitle || `${block.title} Link ${block.links.length + 1}`,
+      url: ''
+    };
+    block.links.push(newLink);
+    setCourse({ ...course, units: updatedUnits });
+  };
+
+  const handleDeleteLinkFromBlock = (
+    unitIdx: number,
+    lessonIdx: number,
+    blockIdx: number,
+    linkIdx: number
+  ) => {
+    const updatedUnits = [...course.units];
+    const block = updatedUnits[unitIdx].lessons[lessonIdx].blocks[blockIdx];
+    if (block.links) {
+      block.links.splice(linkIdx, 1);
+    }
+    setCourse({ ...course, units: updatedUnits });
+    setDeletingLinkId(null);
   };
 
   const handleAiIngest = () => {
@@ -518,161 +634,301 @@ export const UnifiedCourseBuilder: React.FC = () => {
                       </div>
 
                       {/* Lesson Blocks (Elements Stack) */}
-                      <div className="space-y-2 pl-4 border-l-2 border-indigo-100">
-                        {les.blocks.map((blk, bIdx) => (
-                          <div key={blk.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
-                            <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className={`font-mono uppercase px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wider ${
-                                  blk.type === 'teacher_guide' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
-                                  blk.type === 'youtube_video' ? 'bg-rose-100 text-rose-900 border border-rose-200' :
-                                  blk.type === 'google_drive_link' ? 'bg-blue-100 text-blue-900 border border-blue-200' :
-                                  blk.type === 'file_upload' ? 'bg-purple-100 text-purple-900 border border-purple-200' :
-                                  blk.type === 'quiz' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' :
-                                  'bg-slate-200 text-slate-800 border border-slate-300'
-                                }`}>
-                                  {blk.type.replace(/_/g, ' ')}
-                                </span>
-                                <input
-                                  type="text"
-                                  value={blk.title}
-                                  onChange={(e) => {
-                                    const updated = [...course.units];
-                                    const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
-                                    if (targetBlk) targetBlk.title = e.target.value;
-                                    setCourse({ ...course, units: updated });
-                                  }}
-                                  data-agent-id={`course-builder-block-title-input-${blk.id}`}
-                                  data-testid={`course-builder-block-title-${blk.id}`}
-                                  aria-label={`Block Title for ${blk.title}`}
-                                  className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-700 font-medium outline-none px-1 py-0.5 flex-1 min-w-[100px]"
-                                  placeholder="Block Title..."
-                                />
+                      <div className="space-y-3 pl-4 border-l-2 border-indigo-100">
+                        {les.blocks.map((blk, bIdx) => {
+                          const linksList = (blk.links && blk.links.length > 0)
+                            ? blk.links
+                            : [{ id: `initial-${blk.id}`, title: `${blk.title} URL`, url: blk.url || blk.content || '' }];
+
+                          return (
+                            <div key={blk.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2.5 shadow-2xs">
+                              {/* Element Header */}
+                              <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span className={`font-mono uppercase px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider flex items-center gap-1 ${
+                                    blk.type === 'presentation' ? 'bg-indigo-100 text-indigo-900 border border-indigo-200' :
+                                    blk.type === 'video' || blk.type === 'youtube_video' ? 'bg-rose-100 text-rose-900 border border-rose-200' :
+                                    blk.type === 'drive' || blk.type === 'google_drive_link' ? 'bg-sky-100 text-sky-900 border border-sky-200' :
+                                    blk.type === 'file' || blk.type === 'file_upload' ? 'bg-purple-100 text-purple-900 border border-purple-200' :
+                                    blk.type === 'notebook' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
+                                    blk.type === 'quiz' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' :
+                                    'bg-slate-200 text-slate-800 border border-slate-300'
+                                  }`}>
+                                    {blk.type === 'presentation' && <Presentation className="w-2.5 h-2.5" />}
+                                    {(blk.type === 'video' || blk.type === 'youtube_video') && <Video className="w-2.5 h-2.5" />}
+                                    {(blk.type === 'drive' || blk.type === 'google_drive_link') && <FolderOpen className="w-2.5 h-2.5" />}
+                                    {(blk.type === 'file' || blk.type === 'file_upload') && <Paperclip className="w-2.5 h-2.5" />}
+                                    {blk.type === 'notebook' && <BookOpen className="w-2.5 h-2.5" />}
+                                    {blk.type === 'quiz' && <CheckCircle2 className="w-2.5 h-2.5" />}
+                                    {blk.type.replace(/_/g, ' ')}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={blk.title}
+                                    onChange={(e) => {
+                                      const updated = [...course.units];
+                                      const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                      if (targetBlk) targetBlk.title = e.target.value;
+                                      setCourse({ ...course, units: updated });
+                                    }}
+                                    data-agent-id={`course-builder-block-title-input-${blk.id}`}
+                                    data-testid={`course-builder-block-title-${blk.id}`}
+                                    aria-label={`Block Title for ${blk.title}`}
+                                    className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-800 font-bold outline-none px-1 py-0.5 flex-1 min-w-[120px] text-xs"
+                                    placeholder="Element Title..."
+                                  />
+                                </div>
+
+                                {/* Element Delete with Two-step Confirmation */}
+                                <div className="shrink-0 flex items-center">
+                                  {deletingBlockId === blk.id ? (
+                                    <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteBlock(activeUnitIndex, lIdx, bIdx)}
+                                        data-agent-id={`course-builder-confirm-delete-block-${blk.id}-btn`}
+                                        data-testid={`confirm-delete-block-${blk.id}`}
+                                        aria-label={`Confirm Delete Element ${blk.title}`}
+                                        className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                                      >
+                                        <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setDeletingBlockId(null)}
+                                        data-agent-id={`course-builder-cancel-delete-block-${blk.id}-btn`}
+                                        data-testid={`cancel-delete-block-${blk.id}`}
+                                        aria-label="Cancel delete block"
+                                        className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-medium transition-colors"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingBlockId(blk.id)}
+                                      data-agent-id={`course-builder-delete-block-${blk.id}-btn`}
+                                      data-testid={`delete-block-${blk.id}`}
+                                      aria-label={`Delete Element ${blk.title}`}
+                                      className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                      title="Delete Element"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
 
-                              <div className="shrink-0 flex items-center">
-                                {deletingBlockId === blk.id ? (
-                                  <div className="flex items-center gap-1 animate-in fade-in duration-200">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteBlock(activeUnitIndex, lIdx, bIdx)}
-                                      data-agent-id={`course-builder-confirm-delete-block-${blk.id}-btn`}
-                                      data-testid={`confirm-delete-block-${blk.id}`}
-                                      aria-label={`Confirm Delete Element ${blk.title}`}
-                                      className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-1 transition-colors"
-                                    >
-                                      <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDeletingBlockId(null)}
-                                      data-agent-id={`course-builder-cancel-delete-block-${blk.id}-btn`}
-                                      data-testid={`cancel-delete-block-${blk.id}`}
-                                      aria-label="Cancel delete block"
-                                      className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-medium transition-colors"
-                                    >
-                                      Cancel
-                                    </button>
+                              {/* Multi-Link List Nestled Under This Element */}
+                              <div className="space-y-2 pl-3 border-l-2 border-indigo-200/70">
+                                {linksList.map((linkItem, linkIdx) => (
+                                  <div key={linkItem.id} className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-1.5 shadow-2xs">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <input
+                                        type="text"
+                                        value={linkItem.title}
+                                        onChange={(e) => {
+                                          const updated = [...course.units];
+                                          const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                          if (!targetBlk.links) targetBlk.links = [...linksList];
+                                          if (targetBlk.links[linkIdx]) {
+                                            targetBlk.links[linkIdx].title = e.target.value;
+                                          }
+                                          setCourse({ ...course, units: updated });
+                                        }}
+                                        data-agent-id={`course-builder-link-title-input-${linkItem.id}`}
+                                        data-testid={`course-builder-link-title-${linkItem.id}`}
+                                        aria-label={`Title for Link ${linkIdx + 1}`}
+                                        className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-[11px] font-bold text-slate-800 outline-none px-1 py-0.5 flex-1 min-w-[100px]"
+                                        placeholder="Link Title (e.g. Slide Deck, Handout, Recording)..."
+                                      />
+
+                                      {/* Delete Link with Two-step Confirmation */}
+                                      {deletingLinkId === linkItem.id ? (
+                                        <div className="flex items-center gap-1 animate-in fade-in duration-200 shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteLinkFromBlock(activeUnitIndex, lIdx, bIdx, linkIdx)}
+                                            data-agent-id={`course-builder-confirm-delete-link-${linkItem.id}-btn`}
+                                            data-testid={`confirm-delete-link-${linkItem.id}`}
+                                            aria-label={`Confirm Delete Link ${linkItem.title}`}
+                                            className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-0.5"
+                                          >
+                                            <Trash2 className="w-2.5 h-2.5" /> Confirm
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setDeletingLinkId(null)}
+                                            data-agent-id={`course-builder-cancel-delete-link-${linkItem.id}-btn`}
+                                            data-testid={`cancel-delete-link-${linkItem.id}`}
+                                            aria-label="Cancel delete link"
+                                            className="px-1 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded text-[9px]"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setDeletingLinkId(linkItem.id)}
+                                          data-agent-id={`course-builder-delete-link-${linkItem.id}-btn`}
+                                          data-testid={`delete-link-${linkItem.id}`}
+                                          aria-label={`Delete Link ${linkItem.title}`}
+                                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors shrink-0"
+                                          title="Delete Link"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {/* URL Link Box */}
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="relative flex-1">
+                                        <Link2 className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                                        <input
+                                          type="url"
+                                          value={linkItem.url}
+                                          onChange={(e) => {
+                                            const updated = [...course.units];
+                                            const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                            if (!targetBlk.links) targetBlk.links = [...linksList];
+                                            if (targetBlk.links[linkIdx]) {
+                                              targetBlk.links[linkIdx].url = e.target.value;
+                                            }
+                                            targetBlk.url = e.target.value;
+                                            setCourse({ ...course, units: updated });
+                                          }}
+                                          data-agent-id={`course-builder-link-url-input-${linkItem.id}`}
+                                          data-testid={`course-builder-link-url-${linkItem.id}`}
+                                          aria-label={`URL Link for ${linkItem.title}`}
+                                          className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs text-slate-900 font-mono outline-none focus:border-indigo-600 focus:bg-white transition-colors"
+                                          placeholder={
+                                            blk.type === 'presentation' ? 'https://docs.google.com/presentation/d/...' :
+                                            blk.type === 'video' || blk.type === 'youtube_video' ? 'https://www.youtube.com/watch?...' :
+                                            blk.type === 'drive' || blk.type === 'google_drive_link' ? 'https://drive.google.com/drive/folders/...' :
+                                            blk.type === 'file' || blk.type === 'file_upload' ? 'https://... (document or file link)' :
+                                            blk.type === 'notebook' ? 'https://colab.research.google.com/drive/...' :
+                                            blk.type === 'quiz' ? 'https://forms.google.com/... or quiz URL' :
+                                            'https://...'
+                                          }
+                                        />
+                                      </div>
+
+                                      {linkItem.url && linkItem.url.startsWith('http') && (
+                                        <a
+                                          href={linkItem.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          data-agent-id={`course-builder-open-link-${linkItem.id}-btn`}
+                                          data-testid={`open-link-${linkItem.id}`}
+                                          aria-label={`Open link ${linkItem.title} in new tab`}
+                                          className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 rounded-lg shrink-0 transition-colors"
+                                          title="Open link in new tab"
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => setDeletingBlockId(blk.id)}
-                                    data-agent-id={`course-builder-delete-block-${blk.id}-btn`}
-                                    data-testid={`delete-block-${blk.id}`}
-                                    aria-label={`Delete Element ${blk.title}`}
-                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                                    title="Delete Element"
+                                ))}
+
+                                {/* Dropdown Box Nestled Under the Same Element */}
+                                <div className="pt-0.5 flex items-center gap-2">
+                                  <select
+                                    value=""
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        handleAddLinkToBlock(activeUnitIndex, lIdx, bIdx, e.target.value);
+                                      }
+                                    }}
+                                    data-agent-id={`course-builder-nestled-add-dropdown-${blk.id}`}
+                                    data-testid={`nestled-add-dropdown-${blk.id}`}
+                                    aria-label={`Add more links under ${blk.title}`}
+                                    className="bg-white border border-slate-300 hover:border-indigo-500 rounded-lg px-2.5 py-1 text-[11px] font-medium text-slate-700 outline-none cursor-pointer focus:border-indigo-600 shadow-2xs transition-colors"
                                   >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
-                                )}
+                                    <option value="" disabled>
+                                      + Add more to this {blk.type.replace(/_/g, ' ')}...
+                                    </option>
+                                    <option value={`Additional ${blk.type === 'presentation' ? 'Slide Deck' : blk.type === 'video' ? 'Video Recording' : blk.type === 'drive' ? 'Drive Folder' : blk.type === 'file' ? 'Document File' : blk.type === 'notebook' ? 'Colab Notebook' : 'Quiz'} Link`}>
+                                      + Add Another {blk.type === 'presentation' ? 'Slide' : blk.type === 'video' ? 'Video' : blk.type === 'drive' ? 'Drive' : blk.type === 'file' ? 'File' : blk.type === 'notebook' ? 'Notebook' : 'Quiz'} URL
+                                    </option>
+                                    <option value="Supporting Handout / Material URL">
+                                      + Add Supporting Handout / Material URL
+                                    </option>
+                                    <option value="Supplementary Reference URL">
+                                      + Add Supplementary Reference URL
+                                    </option>
+                                    <option value="Student Activity / Exercise URL">
+                                      + Add Student Activity / Exercise URL
+                                    </option>
+                                  </select>
+                                </div>
                               </div>
                             </div>
-                            <textarea
-                              rows={2}
-                              value={blk.content}
-                              onChange={(e) => {
-                                const updated = [...course.units];
-                                const b = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
-                                if (b) b.content = e.target.value;
-                                setCourse({ ...course, units: updated });
-                              }}
-                              data-agent-id={`course-builder-block-content-textarea-${blk.id}`}
-                              data-testid={`course-builder-block-content-${blk.id}`}
-                              aria-label={`Content for ${blk.title}`}
-                              className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-indigo-600 font-sans"
-                              placeholder={
-                                blk.type === 'youtube_video' ? 'Paste YouTube video URL...' :
-                                blk.type === 'google_drive_link' ? 'Paste Google Drive folder or file URL...' :
-                                blk.type === 'quiz' ? 'Enter quiz questions, answers, and competency check criteria...' :
-                                blk.type === 'file_upload' ? 'Specify file upload guidelines or required document format...' :
-                                blk.type === 'teacher_guide' ? 'Enter pedagogical guidelines, lesson scaffolding, and student support notes...' :
-                                'Enter lesson block theory, key concepts, or learning content...'
-                              }
-                            />
-                          </div>
-                        ))}
+                          );
+                        })}
 
                         {/* Add Element Triggers */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1">Add Element:</span>
                           <button
                             type="button"
-                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'text_description')}
-                            data-agent-id={`course-builder-add-theory-block-${les.id}-btn`}
-                            data-testid={`add-theory-block-${les.id}`}
-                            aria-label="Add Theory Block"
-                            className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-700 font-bold hover:bg-slate-50 transition-colors flex items-center gap-1 shadow-2xs"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'presentation')}
+                            data-agent-id={`course-builder-add-presentation-${les.id}-btn`}
+                            data-testid={`add-presentation-${les.id}`}
+                            aria-label="Add Presentation Deck"
+                            className="px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-[10px] text-indigo-800 font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1 shadow-2xs"
                           >
-                            <FileText className="w-2.5 h-2.5 text-indigo-600" /> + Theory
+                            <Presentation className="w-2.5 h-2.5 text-indigo-600" /> + Presentation
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'teacher_guide')}
-                            data-agent-id={`course-builder-add-pedagogy-block-${les.id}-btn`}
-                            data-testid={`add-pedagogy-block-${les.id}`}
-                            aria-label="Add Teacher Pedagogy Guide"
-                            className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1 shadow-2xs"
-                          >
-                            <Sparkles className="w-2.5 h-2.5 text-amber-600" /> + Pedagogy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'youtube_video')}
-                            data-agent-id={`course-builder-add-video-block-${les.id}-btn`}
-                            data-testid={`add-video-block-${les.id}`}
-                            aria-label="Add YouTube Video"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'video')}
+                            data-agent-id={`course-builder-add-video-${les.id}-btn`}
+                            data-testid={`add-video-${les.id}`}
+                            aria-label="Add Video Lecture"
                             className="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-[10px] text-rose-800 font-bold hover:bg-rose-100 transition-colors flex items-center gap-1 shadow-2xs"
                           >
                             <Video className="w-2.5 h-2.5 text-rose-600" /> + Video
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'google_drive_link')}
-                            data-agent-id={`course-builder-add-drive-block-${les.id}-btn`}
-                            data-testid={`add-drive-block-${les.id}`}
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'drive')}
+                            data-agent-id={`course-builder-add-drive-${les.id}-btn`}
+                            data-testid={`add-drive-${les.id}`}
                             aria-label="Add Google Drive Resource"
-                            className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[10px] text-blue-800 font-bold hover:bg-blue-100 transition-colors flex items-center gap-1 shadow-2xs"
+                            className="px-2 py-0.5 rounded-lg bg-sky-50 border border-sky-200 text-[10px] text-sky-800 font-bold hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-2xs"
                           >
-                            <Layers className="w-2.5 h-2.5 text-blue-600" /> + Drive
+                            <FolderOpen className="w-2.5 h-2.5 text-sky-600" /> + Drive
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'file_upload')}
-                            data-agent-id={`course-builder-add-fileupload-block-${les.id}-btn`}
-                            data-testid={`add-fileupload-block-${les.id}`}
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'file')}
+                            data-agent-id={`course-builder-add-file-${les.id}-btn`}
+                            data-testid={`add-file-${les.id}`}
                             aria-label="Add File Attachment"
                             className="px-2 py-0.5 rounded-lg bg-purple-50 border border-purple-200 text-[10px] text-purple-800 font-bold hover:bg-purple-100 transition-colors flex items-center gap-1 shadow-2xs"
                           >
-                            <Plus className="w-2.5 h-2.5 text-purple-600" /> + File
+                            <Paperclip className="w-2.5 h-2.5 text-purple-600" /> + File
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'notebook')}
+                            data-agent-id={`course-builder-add-notebook-${les.id}-btn`}
+                            data-testid={`add-notebook-${les.id}`}
+                            aria-label="Add Google Notebook"
+                            className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <BookOpen className="w-2.5 h-2.5 text-amber-600" /> + Google Notebook
                           </button>
                           <button
                             type="button"
                             onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'quiz')}
-                            data-agent-id={`course-builder-add-quiz-block-${les.id}-btn`}
-                            data-testid={`add-quiz-block-${les.id}`}
-                            aria-label="Add Knowledge Check Quiz"
+                            data-agent-id={`course-builder-add-quiz-${les.id}-btn`}
+                            data-testid={`add-quiz-${les.id}`}
+                            aria-label="Add Formative Quiz"
                             className="px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-800 font-bold hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-2xs"
                           >
                             <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> + Quiz
