@@ -37,6 +37,22 @@ export const DEFAULT_GENERIC_RUBRIC_DESCRIPTORS: [string, string, string, string
   'How to think about this score (85–100%): Comprehensive mastery and leadership. The learner delivers exceptional, insightful work that synthesizes multi-dimensional factors, models industry best practices, anticipates systemic risks, and produces institutional-grade outcomes capable of guiding or mentoring peers.'
 ];
 
+export const FORMATIVE_RUBRIC_DESCRIPTORS: [string, string, string, string, string] = [
+  'How to think about this formative score (0–49%): Critical developmental gap. The learner exhibits foundational misconceptions in knowledge checks or activities. Requires structured instructional scaffolding, targeted remediation, and formative re-checking before proceeding.',
+  'How to think about this formative score (50–64%): Developing capability under guided supervision. The learner understands basic concepts and executes routine steps when prompted with active trainer scaffolding. Independent execution remains inconsistent.',
+  'How to think about this formative score (65–74%): Formative benchmark achieved. The learner independently and reliably demonstrates core concepts, accurately answers formative questions, and is ready for progression to advanced application.',
+  'How to think about this formative score (75–84%): Exceeds formative baseline. The learner demonstrates analytical depth, explains theoretical reasoning, and proactively identifies alternative problem-solving strategies in practice activities.',
+  'How to think about this formative score (85–100%): Exemplary formative mastery. The learner demonstrates complete command of concepts, models best practices, articulates nuances, and demonstrates full readiness for summative evaluation.'
+];
+
+export const SUMMATIVE_RUBRIC_DESCRIPTORS: [string, string, string, string, string] = [
+  'How to think about this summative score (0–49%): Not Yet Competent (NYC). Critical failure to satisfy required performance criteria, safety regulations, or evidence standards under evaluation. Formal re-assessment and evidence resubmission required.',
+  'How to think about this summative score (50–64%): Emerging / Threshold. Partially satisfies performance standards, but required documentary evidence or procedural steps contain material omissions. Does not yet meet full competency sign-off.',
+  'How to think about this summative score (65–74%): Competent (C) Benchmark. The learner independently, accurately, and consistently satisfies all AQF competency standards and workplace performance criteria without external assistance.',
+  'How to think about this summative score (75–84%): Advanced Competency. Exceeds standard competency with structured, evidence-based deliverables, high attention to quality assurance, and validated problem-solving in non-routine workplace scenarios.',
+  'How to think about this summative score (85–100%): Exemplary Mastery. Institutional-grade execution modeling industry leadership, rigorous compliance verification, proactive risk anticipation, and deliverables of publication or audit quality.'
+];
+
 export function createDefaultRubricLevels(
   _criterionName?: string
 ): [RubricLevel, RubricLevel, RubricLevel, RubricLevel, RubricLevel] {
@@ -66,6 +82,30 @@ export function createDefaultRubricLevels(
       label: DEFAULT_RUBRIC_LEVEL_NAMES[4],
       descriptor: DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[4]
     }
+  ];
+}
+
+export function createFormativeRubricLevels(
+  _criterionName?: string
+): [RubricLevel, RubricLevel, RubricLevel, RubricLevel, RubricLevel] {
+  return [
+    { level: 1, label: DEFAULT_RUBRIC_LEVEL_NAMES[0], descriptor: FORMATIVE_RUBRIC_DESCRIPTORS[0] },
+    { level: 2, label: DEFAULT_RUBRIC_LEVEL_NAMES[1], descriptor: FORMATIVE_RUBRIC_DESCRIPTORS[1] },
+    { level: 3, label: DEFAULT_RUBRIC_LEVEL_NAMES[2], descriptor: FORMATIVE_RUBRIC_DESCRIPTORS[2] },
+    { level: 4, label: DEFAULT_RUBRIC_LEVEL_NAMES[3], descriptor: FORMATIVE_RUBRIC_DESCRIPTORS[3] },
+    { level: 5, label: DEFAULT_RUBRIC_LEVEL_NAMES[4], descriptor: FORMATIVE_RUBRIC_DESCRIPTORS[4] }
+  ];
+}
+
+export function createSummativeRubricLevels(
+  _criterionName?: string
+): [RubricLevel, RubricLevel, RubricLevel, RubricLevel, RubricLevel] {
+  return [
+    { level: 1, label: DEFAULT_RUBRIC_LEVEL_NAMES[0], descriptor: SUMMATIVE_RUBRIC_DESCRIPTORS[0] },
+    { level: 2, label: DEFAULT_RUBRIC_LEVEL_NAMES[1], descriptor: SUMMATIVE_RUBRIC_DESCRIPTORS[1] },
+    { level: 3, label: DEFAULT_RUBRIC_LEVEL_NAMES[2], descriptor: SUMMATIVE_RUBRIC_DESCRIPTORS[2] },
+    { level: 4, label: DEFAULT_RUBRIC_LEVEL_NAMES[3], descriptor: SUMMATIVE_RUBRIC_DESCRIPTORS[3] },
+    { level: 5, label: DEFAULT_RUBRIC_LEVEL_NAMES[4], descriptor: SUMMATIVE_RUBRIC_DESCRIPTORS[4] }
   ];
 }
 

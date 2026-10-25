@@ -35,7 +35,11 @@ import {
 import {
   DEFAULT_RUBRIC_LEVEL_NAMES,
   DEFAULT_GENERIC_RUBRIC_DESCRIPTORS,
+  FORMATIVE_RUBRIC_DESCRIPTORS,
+  SUMMATIVE_RUBRIC_DESCRIPTORS,
   createDefaultRubricLevels,
+  createFormativeRubricLevels,
+  createSummativeRubricLevels,
   parseCsvLine,
   generateRubricsTemplateCsv,
   parseRubricsCsv,
@@ -176,6 +180,26 @@ describe('Super-RTO Unified Platform Test Suite', () => {
         assert.strictEqual(lvl.descriptor, DEFAULT_GENERIC_RUBRIC_DESCRIPTORS[idx]);
         assert.ok(lvl.descriptor.length > 50, `Level ${idx + 1} must have a detailed score explanation`);
         assert.ok(lvl.descriptor.startsWith('How to think about this score'), `Level ${idx + 1} must explain how to think about the score`);
+      });
+    });
+
+    it('should generate 5 specialized formative rubric levels explaining diagnostic and developmental benchmarks', () => {
+      const levels = createFormativeRubricLevels('Diagnostic Exam Knowledge');
+      assert.strictEqual(levels.length, 5);
+      levels.forEach((lvl, idx) => {
+        assert.strictEqual(lvl.level, idx + 1);
+        assert.strictEqual(lvl.descriptor, FORMATIVE_RUBRIC_DESCRIPTORS[idx]);
+        assert.ok(lvl.descriptor.includes('formative score'), 'Must explicitly explain formative score thinking');
+      });
+    });
+
+    it('should generate 5 specialized summative rubric levels explaining competency and verification benchmarks', () => {
+      const levels = createSummativeRubricLevels('Summative Exam Performance');
+      assert.strictEqual(levels.length, 5);
+      levels.forEach((lvl, idx) => {
+        assert.strictEqual(lvl.level, idx + 1);
+        assert.strictEqual(lvl.descriptor, SUMMATIVE_RUBRIC_DESCRIPTORS[idx]);
+        assert.ok(lvl.descriptor.includes('summative score'), 'Must explicitly explain summative score thinking');
       });
     });
 

@@ -61,6 +61,8 @@ import {
   CourseAssessment,
   DEFAULT_RUBRIC_LEVEL_NAMES,
   createDefaultRubricLevels,
+  createFormativeRubricLevels,
+  createSummativeRubricLevels,
   parseCsvLine,
   generateRubricsTemplateCsv,
   exportAssessmentsToCsv,
@@ -239,6 +241,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [deletingCriterionId, setDeletingCriterionId] = useState<string | null>(null);
   const [deletingUnitId, setDeletingUnitId] = useState<string | null>(null);
+  const [selectedAssessmentCategory, setSelectedAssessmentCategory] = useState<
+    'summative_exam' | 'formative_exam' | 'formative' | 'summative'
+  >('summative_exam');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Collapsible view state across all course builder layers
@@ -498,6 +503,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const handleAddAssessment = (type: 'formative' | 'summative') => {
     const isFormative = type === 'formative';
     const defaultCritTitle = isFormative ? 'Foundational Knowledge Application' : 'Core Industry Competency & Evidence';
+    const levels = isFormative ? createFormativeRubricLevels(defaultCritTitle) : createSummativeRubricLevels(defaultCritTitle);
     const newAssessment: CourseAssessment = {
       id: `ass-${type}-${Date.now()}`,
       type,
@@ -512,7 +518,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
           weight: 100,
           competentDescriptor: 'Consistently meets required competency benchmark with verified practical evidence.',
           notYetCompetentDescriptor: 'Does not yet meet benchmark requirements; gaps identified in foundational knowledge or execution.',
-          levels: createDefaultRubricLevels(defaultCritTitle)
+          levels
         }
       ]
     };
@@ -523,6 +529,73 @@ export const UnifiedCourseBuilder: React.FC = () => {
     updated[activeUnitIndex].assessments.push(newAssessment);
     setCourse({ ...course, units: updated });
     setStatusMessage(`✨ Added new ${type} assessment.`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleCreateAssessmentWithType = (
+    category: 'summative_exam' | 'formative_exam' | 'formative' | 'summative'
+  ) => {
+    let type: 'formative' | 'summative' = 'summative';
+    let defaultTitle = 'Summative Examination';
+    let defaultDesc =
+      'Formal summative examination assessing cumulative theoretical knowledge, applied problem-solving, and rigorous competency standards under examination conditions.';
+    let defaultCritTitle = 'Exam Performance & Practical Mastery';
+    let levels = createSummativeRubricLevels(defaultCritTitle);
+
+    if (category === 'summative_exam') {
+      type = 'summative';
+      defaultTitle = 'Summative Examination';
+      defaultDesc =
+        'Formal summative examination assessing cumulative theoretical knowledge, applied problem-solving, and rigorous competency standards under examination conditions.';
+      defaultCritTitle = 'Exam Performance & Practical Mastery';
+      levels = createSummativeRubricLevels(defaultCritTitle);
+    } else if (category === 'formative_exam') {
+      type = 'formative';
+      defaultTitle = 'Formative Practice Examination';
+      defaultDesc =
+        'Formative diagnostic practice examination providing structured benchmark feedback to identify learning gaps and reinforce knowledge prior to formal examination.';
+      defaultCritTitle = 'Diagnostic Exam Knowledge Application';
+      levels = createFormativeRubricLevels(defaultCritTitle);
+    } else if (category === 'summative') {
+      type = 'summative';
+      defaultTitle = 'Summative Practical Assessment & Portfolio';
+      defaultDesc =
+        'Formal summative assessment to assess practical competency and evidence of skills against AQF performance standards.';
+      defaultCritTitle = 'Core Industry Competency & Evidence';
+      levels = createSummativeRubricLevels(defaultCritTitle);
+    } else if (category === 'formative') {
+      type = 'formative';
+      defaultTitle = 'Formative Knowledge Check & Practice Activity';
+      defaultDesc =
+        'Continuous formative assessment to reinforce key concepts and provide developmental feedback before final competency evaluation.';
+      defaultCritTitle = 'Foundational Knowledge Application';
+      levels = createFormativeRubricLevels(defaultCritTitle);
+    }
+
+    const newAssessment: CourseAssessment = {
+      id: `ass-${category}-${Date.now()}`,
+      type,
+      title: defaultTitle,
+      description: defaultDesc,
+      criteria: [
+        {
+          id: `crit-${Date.now()}-1`,
+          name: defaultCritTitle,
+          weight: 100,
+          competentDescriptor: 'Consistently meets required competency benchmark with verified practical evidence.',
+          notYetCompetentDescriptor: 'Does not yet meet benchmark requirements; gaps identified in foundational knowledge or execution.',
+          levels
+        }
+      ]
+    };
+
+    const updated = [...course.units];
+    if (!updated[activeUnitIndex].assessments) {
+      updated[activeUnitIndex].assessments = [];
+    }
+    updated[activeUnitIndex].assessments.push(newAssessment);
+    setCourse({ ...course, units: updated });
+    setStatusMessage(`✨ Added new ${defaultTitle} with 5-level ${type} rubrics.`);
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
@@ -537,17 +610,25 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const handleAddCriterion = (assIdx: number) => {
     const updated = [...course.units];
-    const critCount = updated[activeUnitIndex].assessments[assIdx].criteria.length + 1;
-    const critTitle = `Performance Criterion ${critCount}`;
+    const targetAss = updated[activeUnitIndex].assessments[assIdx];
+    const critCount = targetAss.criteria.length + 1;
+    const isFormative = targetAss.type === 'formative';
+    const critTitle = isFormative ? `Formative Criterion ${critCount}` : `Summative Criterion ${critCount}`;
+    const levels = isFormative ? createFormativeRubricLevels(critTitle) : createSummativeRubricLevels(critTitle);
+
     const newCriterion: AssessmentCriterion = {
       id: `crit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       name: critTitle,
       weight: 20,
-      competentDescriptor: `Consistently meets required competency benchmark for ${critTitle}.`,
-      notYetCompetentDescriptor: `Does not yet meet benchmark requirements for ${critTitle}.`,
-      levels: createDefaultRubricLevels(critTitle)
+      competentDescriptor: isFormative
+        ? `Consistently satisfies benchmark for ${critTitle}.`
+        : `Consistently meets required competency standard for ${critTitle}.`,
+      notYetCompetentDescriptor: isFormative
+        ? `Foundational gaps identified for ${critTitle}.`
+        : `Does not yet meet benchmark standard for ${critTitle}.`,
+      levels
     };
-    updated[activeUnitIndex].assessments[assIdx].criteria.push(newCriterion);
+    targetAss.criteria.push(newCriterion);
     setCourse({ ...course, units: updated });
   };
 
@@ -809,11 +890,44 @@ export const UnifiedCourseBuilder: React.FC = () => {
               )}
             </button>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <Award className="w-4 h-4 text-amber-600" />
-                  <span>Assessments & Rubrics (Summative & Formative)</span>
+                  <span>Assessment</span>
                 </h4>
+
+                {/* Dropdown and + for creating more exams, formative, summative exam, and their rubrics */}
+                <div
+                  className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg p-0.5 shadow-2xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <select
+                    value={selectedAssessmentCategory}
+                    onChange={(e) => setSelectedAssessmentCategory(e.target.value as any)}
+                    data-agent-id="course-builder-assessment-type-select"
+                    data-testid="assessment-type-select"
+                    aria-label="Select Assessment or Exam Type"
+                    className="bg-transparent text-slate-800 text-xs font-bold px-2 py-1 outline-none cursor-pointer"
+                  >
+                    <option value="summative_exam">Summative Exam</option>
+                    <option value="formative_exam">Formative Exam</option>
+                    <option value="formative">Formative Assessment</option>
+                    <option value="summative">Summative Assessment</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateAssessmentWithType(selectedAssessmentCategory)}
+                    data-agent-id="course-builder-add-selected-assessment-btn"
+                    data-testid="add-selected-assessment-btn"
+                    aria-label="Create Assessment or Exam"
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                    title="Add selected exam or assessment with rubrics"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </div>
+
                 <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-mono font-bold">
                   {activeUnit.assessments.length} Active
                 </span>
@@ -861,26 +975,6 @@ export const UnifiedCourseBuilder: React.FC = () => {
               className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 transition-colors shadow-2xs"
             >
               {activeUnit.assessments.every((a) => collapsedAssessmentIds[a.id]) ? 'Expand All' : 'Collapse All'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddAssessment('formative')}
-              data-agent-id="course-builder-add-formative-btn"
-              data-testid="add-formative-btn"
-              aria-label="Add Formative Assessment"
-              className="px-2.5 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5 text-teal-600" /> + Formative
-            </button>
-            <button
-              type="button"
-              onClick={() => handleAddAssessment('summative')}
-              data-agent-id="course-builder-add-summative-btn"
-              data-testid="add-summative-btn"
-              aria-label="Add Summative Assessment"
-              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5 text-amber-600" /> + Summative
             </button>
 
             {/* CSV Upload */}
@@ -977,7 +1071,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
                               : 'bg-amber-100 text-amber-900 border border-amber-200'
                           }`}
                         >
-                          {isFormative ? 'Formative' : 'Summative'}
+                          {ass.title.toLowerCase().includes('exam')
+                            ? (isFormative ? 'Formative Exam' : 'Summative Exam')
+                            : (isFormative ? 'Formative' : 'Summative')}
                         </span>
                         <input
                           type="text"
@@ -1004,7 +1100,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                           aria-label={`Add Criterion to ${ass.title}`}
                           className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs"
                         >
-                          <Plus className="w-3 h-3 text-indigo-600" /> + Performance Criterion
+                          <Plus className="w-3 h-3 text-indigo-600" /> + {isFormative ? 'Formative' : 'Summative'} Rubric Criterion
                         </button>
 
                         {deletingAssessmentId === ass.id ? (
