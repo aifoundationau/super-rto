@@ -66,6 +66,7 @@ import {
   exportAssessmentsToCsv,
   parseRubricsCsv
 } from '@/lib/courseBuilder/rubrics';
+import { createDefaultUnit, deleteUnitFromCourse } from '@/lib/courseBuilder/units';
 
 export type { RubricLevel, AssessmentCriterion, CourseAssessment };
 export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine };
@@ -237,6 +238,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [deletingCriterionId, setDeletingCriterionId] = useState<string | null>(null);
+  const [deletingUnitId, setDeletingUnitId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Collapsible view state across all course builder layers
@@ -315,20 +317,27 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const activeUnit = course.units[activeUnitIndex] || course.units[0];
 
   const handleAddUnit = () => {
-    const newUnit: CourseUnit = {
-      id: `unit-${Date.now()}`,
-      unitCode: 'NEWUNIT',
-      unitTitle: 'New Unit of Competency',
-      nominalHours: 40,
-      description: 'Unit description and learning outcomes.',
-      lessons: [],
-      assessments: []
-    };
+    const newUnit = createDefaultUnit('NEWUNIT', 'New Unit of Competency');
     setCourse({
       ...course,
       units: [...course.units, newUnit]
     });
     setActiveUnitIndex(course.units.length);
+  };
+
+  const handleDeleteUnit = (unitIdx: number) => {
+    const { updatedUnits, newActiveIndex, deletedUnit } = deleteUnitFromCourse(
+      course.units,
+      unitIdx,
+      activeUnitIndex
+    );
+    if (!deletedUnit) return;
+
+    setCourse({ ...course, units: updatedUnits });
+    setActiveUnitIndex(newActiveIndex);
+    setDeletingUnitId(null);
+    setStatusMessage(`Unit of Competency "${deletedUnit.unitCode}" deleted.`);
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
   const handleAddLesson = (unitIdx: number) => {
@@ -806,7 +815,57 @@ export const UnifiedCourseBuilder: React.FC = () => {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs font-bold text-indigo-700">{u.unitCode}</span>
-                  <span className="text-[10px] text-slate-500 font-mono font-medium">{u.nominalHours} Hours</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-500 font-mono font-medium">{u.nominalHours} Hours</span>
+                    {deletingUnitId === u.id ? (
+                      <div
+                        className="flex items-center gap-1 animate-in fade-in duration-200"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteUnit(idx);
+                          }}
+                          data-agent-id={`course-builder-confirm-delete-unit-${u.id}-btn`}
+                          data-testid={`confirm-delete-unit-${u.id}`}
+                          aria-label={`Confirm Delete Unit ${u.unitCode}`}
+                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-0.5 shadow-2xs transition-colors"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeletingUnitId(null);
+                          }}
+                          data-agent-id={`course-builder-cancel-delete-unit-${u.id}-btn`}
+                          data-testid={`cancel-delete-unit-${u.id}`}
+                          aria-label={`Cancel Delete Unit ${u.unitCode}`}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingUnitId(u.id);
+                        }}
+                        data-agent-id={`course-builder-delete-unit-${u.id}-btn`}
+                        data-testid={`delete-unit-${u.id}`}
+                        aria-label={`Delete Unit ${u.unitCode}`}
+                        className="p-1 text-slate-400 hover:text-rose-600 transition-colors rounded hover:bg-rose-50"
+                        title={`Delete Unit ${u.unitCode}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <h4 className="text-xs font-bold text-slate-900 mt-1 line-clamp-1">{u.unitTitle}</h4>
                 <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-2">
@@ -858,9 +917,48 @@ export const UnifiedCourseBuilder: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">
-                    {isUnitInfoCollapsed ? 'Click to expand' : 'Click to collapse'}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
+                    {deletingUnitId === activeUnit.id ? (
+                      <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUnit(activeUnitIndex)}
+                          data-agent-id={`course-builder-header-confirm-delete-unit-${activeUnit.id}-btn`}
+                          data-testid={`header-confirm-delete-unit-${activeUnit.id}`}
+                          aria-label={`Confirm Delete Unit ${activeUnit.unitCode}`}
+                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-0.5 shadow-2xs transition-colors"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeletingUnitId(null)}
+                          data-agent-id={`course-builder-header-cancel-delete-unit-${activeUnit.id}-btn`}
+                          data-testid={`header-cancel-delete-unit-${activeUnit.id}`}
+                          aria-label={`Cancel Delete Unit ${activeUnit.unitCode}`}
+                          className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDeletingUnitId(activeUnit.id)}
+                        data-agent-id={`course-builder-header-delete-unit-${activeUnit.id}-btn`}
+                        data-testid={`header-delete-unit-${activeUnit.id}`}
+                        aria-label={`Delete Unit ${activeUnit.unitCode}`}
+                        className="px-2 py-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded text-xs font-medium flex items-center gap-1 transition-colors"
+                        title={`Delete Unit ${activeUnit.unitCode}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline text-[10px]">Delete Unit</span>
+                      </button>
+                    )}
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {isUnitInfoCollapsed ? 'Expand' : 'Collapse'}
+                    </span>
+                  </div>
                 </div>
 
                 {!isUnitInfoCollapsed && (

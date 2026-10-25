@@ -42,6 +42,12 @@ import {
   exportAssessmentsToCsv
 } from '../lib/courseBuilder/rubrics.ts';
 
+// 5. Units of Competency Lifecycle & Deletion Tests
+import {
+  createDefaultUnit,
+  deleteUnitFromCourse
+} from '../lib/courseBuilder/units.ts';
+
 describe('Super-RTO Unified Platform Test Suite', () => {
 
   describe('Unified RBAC & Director Role Verification', () => {
@@ -216,4 +222,80 @@ describe('Super-RTO Unified Platform Test Suite', () => {
     });
   });
 
+  describe('Unit of Competency Lifecycle & Deletion Verification', () => {
+    it('should create default unit with standard 40 nominal hours and empty lessons/assessments', () => {
+      const unit = createDefaultUnit('BSBWHS411', 'Implement WHS policies');
+      assert.strictEqual(unit.unitCode, 'BSBWHS411');
+      assert.strictEqual(unit.unitTitle, 'Implement WHS policies');
+      assert.strictEqual(unit.nominalHours, 40);
+      assert.deepStrictEqual(unit.lessons, []);
+      assert.deepStrictEqual(unit.assessments, []);
+      assert.ok(unit.id.startsWith('unit-'));
+    });
+
+    it('should safely delete a unit from the middle of the units list', () => {
+      const u1 = createDefaultUnit('UNIT1', 'First Unit');
+      const u2 = createDefaultUnit('UNIT2', 'Second Unit');
+      const u3 = createDefaultUnit('UNIT3', 'Third Unit');
+      const initialUnits = [u1, u2, u3];
+
+      const { updatedUnits, newActiveIndex, deletedUnit } = deleteUnitFromCourse(initialUnits, 1, 1);
+      assert.strictEqual(deletedUnit?.unitCode, 'UNIT2');
+      assert.strictEqual(updatedUnits.length, 2);
+      assert.strictEqual(updatedUnits[0].unitCode, 'UNIT1');
+      assert.strictEqual(updatedUnits[1].unitCode, 'UNIT3');
+      assert.strictEqual(newActiveIndex, 1);
+    });
+
+    it('should shift active index down when deleting a unit before the active unit', () => {
+      const u1 = createDefaultUnit('UNIT1', 'First Unit');
+      const u2 = createDefaultUnit('UNIT2', 'Second Unit');
+      const u3 = createDefaultUnit('UNIT3', 'Third Unit');
+      const initialUnits = [u1, u2, u3];
+
+      // Current active index is 2 (UNIT3), we delete index 0 (UNIT1)
+      const { updatedUnits, newActiveIndex, deletedUnit } = deleteUnitFromCourse(initialUnits, 0, 2);
+      assert.strictEqual(deletedUnit?.unitCode, 'UNIT1');
+      assert.strictEqual(updatedUnits.length, 2);
+      assert.strictEqual(updatedUnits[1].unitCode, 'UNIT3');
+      assert.strictEqual(newActiveIndex, 1); // UNIT3 is now at index 1
+    });
+
+    it('should clamp active index when deleting the last unit in the list', () => {
+      const u1 = createDefaultUnit('UNIT1', 'First Unit');
+      const u2 = createDefaultUnit('UNIT2', 'Second Unit');
+      const initialUnits = [u1, u2];
+
+      // Current active index is 1 (UNIT2), we delete index 1 (UNIT2)
+      const { updatedUnits, newActiveIndex, deletedUnit } = deleteUnitFromCourse(initialUnits, 1, 1);
+      assert.strictEqual(deletedUnit?.unitCode, 'UNIT2');
+      assert.strictEqual(updatedUnits.length, 1);
+      assert.strictEqual(updatedUnits[0].unitCode, 'UNIT1');
+      assert.strictEqual(newActiveIndex, 0); // Focus moves to UNIT1
+    });
+
+    it('should create a clean fallback unit if all units are deleted so builder never breaks', () => {
+      const u1 = createDefaultUnit('UNIT1', 'Sole Unit');
+      const initialUnits = [u1];
+
+      const { updatedUnits, newActiveIndex, deletedUnit } = deleteUnitFromCourse(initialUnits, 0, 0);
+      assert.strictEqual(deletedUnit?.unitCode, 'UNIT1');
+      assert.strictEqual(updatedUnits.length, 1);
+      assert.strictEqual(updatedUnits[0].unitCode, 'UNIT101');
+      assert.strictEqual(updatedUnits[0].unitTitle, 'New Unit of Competency');
+      assert.strictEqual(newActiveIndex, 0);
+    });
+
+    it('should return unchanged units if target index is out of bounds', () => {
+      const u1 = createDefaultUnit('UNIT1', 'First Unit');
+      const initialUnits = [u1];
+
+      const { updatedUnits, newActiveIndex, deletedUnit } = deleteUnitFromCourse(initialUnits, 5, 0);
+      assert.strictEqual(deletedUnit, null);
+      assert.strictEqual(updatedUnits.length, 1);
+      assert.strictEqual(newActiveIndex, 0);
+    });
+  });
+
 });
+
