@@ -18,7 +18,88 @@ export interface CourseAssessment {
   type: 'formative' | 'summative';
   title: string;
   description: string;
+  examNumber?: number;
+  dueDate?: string;
   criteria: AssessmentCriterion[];
+}
+
+export type AssessmentSortOption =
+  | 'exam_number_asc'
+  | 'exam_number_desc'
+  | 'date_asc'
+  | 'date_desc'
+  | 'manual';
+
+/**
+ * Sorts assessments according to exam number (ascending/descending) or scheduled due date.
+ */
+export function sortAssessments(
+  assessments: CourseAssessment[],
+  sortBy: AssessmentSortOption
+): CourseAssessment[] {
+  if (!assessments || assessments.length <= 1) return [...(assessments || [])];
+  if (sortBy === 'manual') return [...assessments];
+
+  return [...assessments].sort((a, b) => {
+    if (sortBy === 'exam_number_asc' || sortBy === 'exam_number_desc') {
+      const getNum = (item: CourseAssessment) => {
+        if (typeof item.examNumber === 'number' && !isNaN(item.examNumber)) {
+          return item.examNumber;
+        }
+        const match = item.title.match(/(?:exam|assessment|no\.?|#)\s*(\d+)/i) || item.title.match(/(\d+)/);
+        return match ? parseInt(match[1], 10) : 999999;
+      };
+      const numA = getNum(a);
+      const numB = getNum(b);
+      if (numA !== numB) {
+        return sortBy === 'exam_number_asc' ? numA - numB : numB - numA;
+      }
+      const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+      const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+      return dateA - dateB;
+    }
+
+    if (sortBy === 'date_asc' || sortBy === 'date_desc') {
+      const getTime = (item: CourseAssessment, asc: boolean) => {
+        if (!item.dueDate) return asc ? Infinity : -Infinity;
+        const t = new Date(item.dueDate).getTime();
+        return isNaN(t) ? (asc ? Infinity : -Infinity) : t;
+      };
+      const timeA = getTime(a, sortBy === 'date_asc');
+      const timeB = getTime(b, sortBy === 'date_asc');
+      if (timeA !== timeB) {
+        return sortBy === 'date_asc' ? timeA - timeB : timeB - timeA;
+      }
+      const numA = typeof a.examNumber === 'number' ? a.examNumber : 0;
+      const numB = typeof b.examNumber === 'number' ? b.examNumber : 0;
+      return numA - numB;
+    }
+
+    return 0;
+  });
+}
+
+/**
+ * Reorders an assessment from one position to another in the sequence array.
+ */
+export function reorderAssessment(
+  assessments: CourseAssessment[],
+  fromIndex: number,
+  toIndex: number
+): CourseAssessment[] {
+  if (
+    fromIndex < 0 ||
+    fromIndex >= assessments.length ||
+    toIndex < 0 ||
+    toIndex >= assessments.length ||
+    fromIndex === toIndex
+  ) {
+    return [...assessments];
+  }
+  const result = [...assessments];
+  const [removed] = result.splice(fromIndex, 1);
+  result.splice(toIndex, 0, removed);
+  return result;
 }
 
 export const DEFAULT_RUBRIC_LEVEL_NAMES: [string, string, string, string, string] = [
@@ -164,6 +245,8 @@ export function parseRubricsCsv(csvText: string): CourseAssessment[] {
   const typeCol = findColIndex(['type', 'kind'], 0);
   const titleCol = findColIndex(['title', 'assessmenttitle', 'assessmentname'], 1);
   const descCol = findColIndex(['desc', 'instruction', 'summary'], 2);
+  const examNumCol = findColIndex(['examnumber', 'examno', 'examnum', 'number', 'seq'], -1);
+  const dateCol = findColIndex(['duedate', 'examdate', 'date', 'scheduledate', 'schedule'], -1);
   const critCol = findColIndex(['crit', 'criterion', 'criteria', 'performancecriteria'], 3);
   const weightCol = findColIndex(['weight', 'percentage', 'mark'], 4);
   const lvl1Col = findColIndex(['level1', 'nyc', 'notyetcompetent', 'novice'], 5);
@@ -216,11 +299,19 @@ export function parseRubricsCsv(csvText: string): CourseAssessment[] {
         importedAssessments[idx].description = description;
       }
     } else {
+      const parsedExamNum =
+        examNumCol !== -1 && cols[examNumCol]
+          ? parseInt(cols[examNumCol].replace(/[^\d]/g, ''), 10) || undefined
+          : undefined;
+      const parsedDate = dateCol !== -1 && cols[dateCol]?.trim() ? cols[dateCol].trim() : undefined;
+
       const newAss: CourseAssessment = {
         id: `ass-${type}-${Date.now()}-${importedAssessments.length + 1}`,
         type,
         title,
         description,
+        examNumber: parsedExamNum || importedAssessments.length + 1,
+        dueDate: parsedDate,
         criteria: [criterion]
       };
       titleToAssIndex.set(key, importedAssessments.length);

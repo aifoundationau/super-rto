@@ -23,6 +23,8 @@ import {
   Upload,
   FileSpreadsheet,
   Target,
+  ArrowUpDown,
+  Calendar,
   ChevronDown,
   ChevronUp,
   ChevronRight
@@ -60,6 +62,9 @@ import {
   RubricLevel,
   AssessmentCriterion,
   CourseAssessment,
+  AssessmentSortOption,
+  sortAssessments,
+  reorderAssessment,
   DEFAULT_RUBRIC_LEVEL_NAMES,
   createDefaultRubricLevels,
   createFormativeRubricLevels,
@@ -77,8 +82,8 @@ import {
   createPerformanceCriterion
 } from '@/lib/courseBuilder/units';
 
-export type { RubricLevel, AssessmentCriterion, CourseAssessment, UnitPerformanceCriterion };
-export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine };
+export type { RubricLevel, AssessmentCriterion, CourseAssessment, UnitPerformanceCriterion, AssessmentSortOption };
+export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine, sortAssessments, reorderAssessment };
 
 export interface CourseUnit {
   id: string;
@@ -215,6 +220,8 @@ const DEFAULT_COURSE: CourseData = {
           type: 'formative',
           title: 'Formative Knowledge Check & Practice Activity',
           description: 'Continuous formative assessment measuring foundational concepts, applied problem-solving, and reflective practice.',
+          examNumber: 1,
+          dueDate: '2026-11-10',
           criteria: [
             {
               id: 'crit-f-1',
@@ -239,6 +246,8 @@ const DEFAULT_COURSE: CourseData = {
           type: 'summative',
           title: 'Summative Performance Portfolio & Capstone Evaluation',
           description: 'Formal summative evaluation assessing end-to-end practical execution, regulatory compliance documentation, and portfolio deliverables.',
+          examNumber: 2,
+          dueDate: '2026-11-24',
           criteria: [
             {
               id: 'crit-s-1',
@@ -279,6 +288,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [selectedAssessmentCategory, setSelectedAssessmentCategory] = useState<
     'summative_exam' | 'formative_exam' | 'formative' | 'summative'
   >('summative_exam');
+  const [assessmentSortOption, setAssessmentSortOption] = useState<AssessmentSortOption>('exam_number_asc');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Collapsible view state across all course builder layers
@@ -591,13 +601,23 @@ export const UnifiedCourseBuilder: React.FC = () => {
     const isFormative = type === 'formative';
     const defaultCritTitle = isFormative ? 'Foundational Knowledge Application' : 'Core Industry Competency & Evidence';
     const levels = isFormative ? createFormativeRubricLevels(defaultCritTitle) : createSummativeRubricLevels(defaultCritTitle);
+    const existingAssessments = course.units[activeUnitIndex]?.assessments || [];
+    const nextExamNumber = existingAssessments.length + 1;
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() + 14 * nextExamNumber);
+    const defaultDueDate = baseDate.toISOString().split('T')[0];
+
     const newAssessment: CourseAssessment = {
       id: `ass-${type}-${Date.now()}`,
       type,
-      title: isFormative ? 'Formative Knowledge Check & Practice Activity' : 'Summative Practical Assessment & Portfolio',
+      title: isFormative
+        ? `Formative Knowledge Check & Practice Activity #${nextExamNumber}`
+        : `Summative Practical Assessment & Portfolio #${nextExamNumber}`,
       description: isFormative
         ? 'Continuous formative assessment to reinforce key concepts and provide developmental feedback before final competency evaluation.'
         : 'Formal summative assessment to assess practical competency and evidence of skills against AQF performance standards.',
+      examNumber: nextExamNumber,
+      dueDate: defaultDueDate,
       criteria: [
         {
           id: `crit-${Date.now()}-1`,
@@ -613,7 +633,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
     if (!updated[activeUnitIndex].assessments) {
       updated[activeUnitIndex].assessments = [];
     }
-    updated[activeUnitIndex].assessments.push(newAssessment);
+    const combined = [...updated[activeUnitIndex].assessments, newAssessment];
+    updated[activeUnitIndex].assessments =
+      assessmentSortOption === 'manual' ? combined : sortAssessments(combined, assessmentSortOption);
     setCourse({ ...course, units: updated });
     setStatusMessage(`✨ Added new ${type} assessment.`);
     setTimeout(() => setStatusMessage(null), 3000);
@@ -659,11 +681,19 @@ export const UnifiedCourseBuilder: React.FC = () => {
       levels = createFormativeRubricLevels(defaultCritTitle);
     }
 
+    const existingAssessments = course.units[activeUnitIndex]?.assessments || [];
+    const nextExamNumber = existingAssessments.length + 1;
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() + 14 * nextExamNumber);
+    const defaultDueDate = baseDate.toISOString().split('T')[0];
+
     const newAssessment: CourseAssessment = {
       id: `ass-${category}-${Date.now()}`,
       type,
-      title: defaultTitle,
+      title: `${defaultTitle} #${nextExamNumber}`,
       description: defaultDesc,
+      examNumber: nextExamNumber,
+      dueDate: defaultDueDate,
       criteria: [
         {
           id: `crit-${Date.now()}-1`,
@@ -680,10 +710,66 @@ export const UnifiedCourseBuilder: React.FC = () => {
     if (!updated[activeUnitIndex].assessments) {
       updated[activeUnitIndex].assessments = [];
     }
-    updated[activeUnitIndex].assessments.push(newAssessment);
+    const combined = [...updated[activeUnitIndex].assessments, newAssessment];
+    updated[activeUnitIndex].assessments =
+      assessmentSortOption === 'manual' ? combined : sortAssessments(combined, assessmentSortOption);
     setCourse({ ...course, units: updated });
-    setStatusMessage(`✨ Added new ${defaultTitle} with 5-level ${type} rubrics.`);
+    setStatusMessage(`✨ Added new ${defaultTitle} #${nextExamNumber} with 5-level ${type} rubrics.`);
     setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleSortAssessments = (newSortOption: AssessmentSortOption) => {
+    setAssessmentSortOption(newSortOption);
+    if (newSortOption === 'manual') {
+      setStatusMessage('Switched to manual assessment order. Use Move Up / Down on cards to arrange.');
+      setTimeout(() => setStatusMessage(null), 3000);
+      return;
+    }
+    const updated = [...course.units];
+    const currentAssessments = updated[activeUnitIndex]?.assessments || [];
+    updated[activeUnitIndex].assessments = sortAssessments(currentAssessments, newSortOption);
+    setCourse({ ...course, units: updated });
+    const sortLabel =
+      newSortOption === 'exam_number_asc'
+        ? 'Exam # (1 → N)'
+        : newSortOption === 'exam_number_desc'
+        ? 'Exam # (N → 1)'
+        : newSortOption === 'date_asc'
+        ? 'Date (Earliest First)'
+        : 'Date (Latest First)';
+    setStatusMessage(`Assessments ordered by ${sortLabel}.`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleMoveAssessment = (assIdx: number, direction: 'up' | 'down') => {
+    const toIdx = direction === 'up' ? assIdx - 1 : assIdx + 1;
+    const updated = [...course.units];
+    const currentAssessments = updated[activeUnitIndex]?.assessments || [];
+    updated[activeUnitIndex].assessments = reorderAssessment(currentAssessments, assIdx, toIdx);
+    setAssessmentSortOption('manual');
+    setCourse({ ...course, units: updated });
+    setStatusMessage(`Assessment moved ${direction} (Manual Order).`);
+    setTimeout(() => setStatusMessage(null), 2500);
+  };
+
+  const handleUpdateAssessmentField = (
+    assIdx: number,
+    field: 'title' | 'description' | 'examNumber' | 'dueDate',
+    value: any
+  ) => {
+    const updated = [...course.units];
+    const currentAssessments = [...(updated[activeUnitIndex]?.assessments || [])];
+    if (!currentAssessments[assIdx]) return;
+    currentAssessments[assIdx] = {
+      ...currentAssessments[assIdx],
+      [field]: value
+    };
+    if (assessmentSortOption !== 'manual' && (field === 'examNumber' || field === 'dueDate')) {
+      updated[activeUnitIndex].assessments = sortAssessments(currentAssessments, assessmentSortOption);
+    } else {
+      updated[activeUnitIndex].assessments = currentAssessments;
+    }
+    setCourse({ ...course, units: updated });
   };
 
   const handleDeleteAssessment = (assIdx: number) => {
@@ -772,7 +858,10 @@ export const UnifiedCourseBuilder: React.FC = () => {
         }
 
         const updatedUnits = [...course.units];
-        updatedUnits[activeUnitIndex].assessments = importedAssessments;
+        updatedUnits[activeUnitIndex].assessments =
+          assessmentSortOption === 'manual'
+            ? importedAssessments
+            : sortAssessments(importedAssessments, assessmentSortOption);
         setCourse({ ...course, units: updatedUnits });
         setStatusMessage(`✨ Successfully imported ${importedAssessments.length} assessment(s) with 5-level rubrics from CSV.`);
         setTimeout(() => setStatusMessage(null), 5000);
@@ -921,6 +1010,10 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 type="text"
                 value={course.title}
                 onChange={(e) => setCourse({ ...course, title: e.target.value })}
+                data-agent-id="course-builder-title-input"
+                data-testid="course-title-input"
+                aria-label="Course Title"
+                placeholder="Course Title (e.g. Certificate IV in Work Health and Safety)..."
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 shadow-2xs"
               />
             </div>
@@ -931,6 +1024,10 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 type="text"
                 value={course.code}
                 onChange={(e) => setCourse({ ...course, code: e.target.value })}
+                data-agent-id="course-builder-code-input"
+                data-testid="course-code-input"
+                aria-label="Course Code"
+                placeholder="Course Code (e.g. BSB41419)..."
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-mono font-bold outline-none focus:border-indigo-600 shadow-2xs"
               />
             </div>
@@ -943,7 +1040,25 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 step="1"
                 value={course.tokenCost}
                 onChange={(e) => setCourse({ ...course, tokenCost: toStrictIntegerTokens(parseInt(e.target.value) || 0) })}
+                data-agent-id="course-builder-token-cost-input"
+                data-testid="course-token-cost-input"
+                aria-label="Token Cost"
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-amber-700 font-mono font-bold outline-none focus:border-amber-600 shadow-2xs"
+              />
+            </div>
+
+            {/* Course Description Box */}
+            <div className="md:col-span-4">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Course Description</label>
+              <textarea
+                rows={3}
+                value={course.description}
+                onChange={(e) => setCourse({ ...course, description: e.target.value })}
+                data-agent-id="course-builder-description-input"
+                data-testid="course-description-input"
+                aria-label="Course Description"
+                placeholder="Enter a comprehensive course description, learning outcomes, qualification overview, or industry scope..."
+                className="w-full bg-white border border-slate-300 focus:border-indigo-600 rounded-lg p-2.5 text-xs text-slate-800 outline-none leading-relaxed resize-y font-sans shadow-2xs"
               />
             </div>
           </div>
@@ -1281,6 +1396,26 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
           {/* Assessment Actions Toolbar */}
           <div className="flex flex-wrap items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {/* Sort Order Selector */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 shadow-2xs">
+              <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-[11px] font-bold text-slate-700">Order by:</span>
+              <select
+                value={assessmentSortOption}
+                onChange={(e) => handleSortAssessments(e.target.value as AssessmentSortOption)}
+                data-agent-id="course-builder-assessment-sort-select"
+                data-testid="assessment-sort-select"
+                aria-label="Order Assessments by Exam Number or Date"
+                className="bg-transparent text-slate-800 text-xs font-semibold outline-none cursor-pointer"
+              >
+                <option value="exam_number_asc">Exam # (1 → N)</option>
+                <option value="exam_number_desc">Exam # (N → 1)</option>
+                <option value="date_asc">Date (Earliest First)</option>
+                <option value="date_desc">Date (Latest First)</option>
+                <option value="manual">Manual Order</option>
+              </select>
+            </div>
+
             <button
               type="button"
               onClick={() => {
@@ -1368,7 +1503,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   >
                     {/* Assessment Card Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                         <button
                           type="button"
                           onClick={() => toggleAssessmentCollapse(ass.id)}
@@ -1376,7 +1511,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                           data-testid={`toggle-assessment-${ass.id}`}
                           aria-label={`Toggle Assessment ${ass.title}`}
                           aria-expanded={!isAssessmentCollapsed}
-                          className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                          className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors shrink-0"
                           title={isAssessmentCollapsed ? 'Expand Assessment' : 'Collapse Assessment'}
                         >
                           {isAssessmentCollapsed ? (
@@ -1385,6 +1520,60 @@ export const UnifiedCourseBuilder: React.FC = () => {
                             <ChevronDown className="w-4 h-4 text-slate-600" />
                           )}
                         </button>
+
+                        {/* Sequence Move Up / Move Down buttons */}
+                        <div className="flex items-center gap-0.5 border border-slate-200 rounded bg-white p-0.5 shrink-0">
+                          <button
+                            type="button"
+                            disabled={assIdx === 0}
+                            onClick={() => handleMoveAssessment(assIdx, 'up')}
+                            data-agent-id={`course-builder-move-up-assessment-${ass.id}-btn`}
+                            data-testid={`move-up-assessment-${ass.id}`}
+                            aria-label={`Move Assessment ${ass.title} Up`}
+                            className={`p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors ${
+                              assIdx === 0 ? 'opacity-30 cursor-not-allowed' : ''
+                            }`}
+                            title="Move Up in Sequence"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={assIdx === activeUnit.assessments.length - 1}
+                            onClick={() => handleMoveAssessment(assIdx, 'down')}
+                            data-agent-id={`course-builder-move-down-assessment-${ass.id}-btn`}
+                            data-testid={`move-down-assessment-${ass.id}`}
+                            aria-label={`Move Assessment ${ass.title} Down`}
+                            className={`p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors ${
+                              assIdx === activeUnit.assessments.length - 1 ? 'opacity-30 cursor-not-allowed' : ''
+                            }`}
+                            title="Move Down in Sequence"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Exam Number Badge & Input */}
+                        <div
+                          className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0"
+                          title="Exam or Assessment Sequence Number"
+                        >
+                          <span className="text-[10px] font-bold text-amber-800">Exam #</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={ass.examNumber ?? (assIdx + 1)}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              handleUpdateAssessmentField(assIdx, 'examNumber', isNaN(val) ? undefined : val);
+                            }}
+                            data-agent-id={`course-builder-assessment-exam-number-${ass.id}`}
+                            data-testid={`assessment-exam-number-${ass.id}`}
+                            aria-label={`Exam Number for ${ass.title}`}
+                            className="w-12 text-center text-xs font-mono font-bold text-amber-900 bg-white border border-amber-300 rounded px-1 py-0.5 outline-none focus:border-amber-500"
+                          />
+                        </div>
+
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0 ${
                             isFormative
@@ -1396,20 +1585,35 @@ export const UnifiedCourseBuilder: React.FC = () => {
                             ? (isFormative ? 'Formative Exam' : 'Summative Exam')
                             : (isFormative ? 'Formative' : 'Summative')}
                         </span>
+
                         <input
                           type="text"
                           value={ass.title}
-                          onChange={(e) => {
-                            const updated = [...course.units];
-                            updated[activeUnitIndex].assessments[assIdx].title = e.target.value;
-                            setCourse({ ...course, units: updated });
-                          }}
+                          onChange={(e) => handleUpdateAssessmentField(assIdx, 'title', e.target.value)}
                           data-agent-id={`course-builder-assessment-title-${ass.id}`}
                           data-testid={`assessment-title-${ass.id}`}
                           aria-label={`Assessment Title for ${ass.id}`}
                           placeholder="Assessment Title..."
                           className="text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded px-2 py-1 outline-none focus:border-indigo-600 flex-1 min-w-[160px]"
                         />
+
+                        {/* Due Date / Exam Date Input */}
+                        <div
+                          className="flex items-center gap-1 bg-slate-100 border border-slate-300 rounded px-1.5 py-0.5 shrink-0"
+                          title="Scheduled / Due Date"
+                        >
+                          <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                          <span className="text-[10px] font-bold text-slate-600">Date:</span>
+                          <input
+                            type="date"
+                            value={ass.dueDate || ''}
+                            onChange={(e) => handleUpdateAssessmentField(assIdx, 'dueDate', e.target.value)}
+                            data-agent-id={`course-builder-assessment-due-date-${ass.id}`}
+                            data-testid={`assessment-due-date-${ass.id}`}
+                            aria-label={`Due or Exam Date for ${ass.title}`}
+                            className="text-[11px] font-semibold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-indigo-600 cursor-pointer"
+                          />
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
@@ -1473,11 +1677,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                           <textarea
                             rows={2}
                             value={ass.description}
-                            onChange={(e) => {
-                              const updated = [...course.units];
-                              updated[activeUnitIndex].assessments[assIdx].description = e.target.value;
-                              setCourse({ ...course, units: updated });
-                            }}
+                            onChange={(e) => handleUpdateAssessmentField(assIdx, 'description', e.target.value)}
                             data-agent-id={`course-builder-assessment-desc-${ass.id}`}
                             data-testid={`assessment-desc-${ass.id}`}
                             aria-label={`Assessment Description for ${ass.id}`}

@@ -45,7 +45,9 @@ import {
   parseCsvLine,
   generateRubricsTemplateCsv,
   parseRubricsCsv,
-  exportAssessmentsToCsv
+  exportAssessmentsToCsv,
+  sortAssessments,
+  reorderAssessment
 } from '../lib/courseBuilder/rubrics.ts';
 
 // 5. Units of Competency Lifecycle & Deletion Tests
@@ -408,6 +410,153 @@ describe('Super-RTO Unified Platform Test Suite', () => {
     });
   });
 
+  describe('Assessment Ordering & Sorting Verification (Exam Number & Date)', () => {
+    const mockAssessments = [
+      {
+        id: 'ass-3',
+        type: 'summative',
+        title: 'Summative Practical Exam #3',
+        description: 'Final exam',
+        examNumber: 3,
+        dueDate: '2026-12-15',
+        criteria: []
+      },
+      {
+        id: 'ass-1',
+        type: 'formative',
+        title: 'Formative Knowledge Check #1',
+        description: 'First check',
+        examNumber: 1,
+        dueDate: '2026-11-01',
+        criteria: []
+      },
+      {
+        id: 'ass-2',
+        type: 'summative',
+        title: 'Summative Midterm Exam #2',
+        description: 'Midterm exam',
+        examNumber: 2,
+        dueDate: '2026-11-20',
+        criteria: []
+      }
+    ];
+
+    it('should sort assessments in ascending order by exam number (1 -> N)', () => {
+      const sorted = sortAssessments(mockAssessments, 'exam_number_asc');
+      assert.strictEqual(sorted.length, 3);
+      assert.strictEqual(sorted[0].examNumber, 1);
+      assert.strictEqual(sorted[1].examNumber, 2);
+      assert.strictEqual(sorted[2].examNumber, 3);
+      assert.strictEqual(sorted[0].id, 'ass-1');
+      assert.strictEqual(sorted[2].id, 'ass-3');
+    });
+
+    it('should sort assessments in descending order by exam number (N -> 1)', () => {
+      const sorted = sortAssessments(mockAssessments, 'exam_number_desc');
+      assert.strictEqual(sorted.length, 3);
+      assert.strictEqual(sorted[0].examNumber, 3);
+      assert.strictEqual(sorted[1].examNumber, 2);
+      assert.strictEqual(sorted[2].examNumber, 1);
+      assert.strictEqual(sorted[0].id, 'ass-3');
+      assert.strictEqual(sorted[2].id, 'ass-1');
+    });
+
+    it('should sort assessments by scheduled due date in ascending order (Earliest First)', () => {
+      const mixed = [
+        { id: 'b', title: 'Exam B', dueDate: '2026-12-01', criteria: [] },
+        { id: 'c', title: 'Exam C', dueDate: '2026-10-15', criteria: [] },
+        { id: 'a', title: 'Exam A', dueDate: '2026-11-15', criteria: [] }
+      ];
+      const sorted = sortAssessments(mixed, 'date_asc');
+      assert.strictEqual(sorted[0].id, 'c');
+      assert.strictEqual(sorted[1].id, 'a');
+      assert.strictEqual(sorted[2].id, 'b');
+    });
+
+    it('should sort assessments by scheduled due date in descending order (Latest First)', () => {
+      const mixed = [
+        { id: 'b', title: 'Exam B', dueDate: '2026-12-01', criteria: [] },
+        { id: 'c', title: 'Exam C', dueDate: '2026-10-15', criteria: [] },
+        { id: 'a', title: 'Exam A', dueDate: '2026-11-15', criteria: [] }
+      ];
+      const sorted = sortAssessments(mixed, 'date_desc');
+      assert.strictEqual(sorted[0].id, 'b');
+      assert.strictEqual(sorted[1].id, 'a');
+      assert.strictEqual(sorted[2].id, 'c');
+    });
+
+    it('should fallback to extracting exam number from title when examNumber property is absent', () => {
+      const noProps = [
+        { id: 'p2', title: 'Practical Assessment No. 2', criteria: [] },
+        { id: 'p1', title: 'Knowledge Exam 1', criteria: [] }
+      ];
+      const sorted = sortAssessments(noProps, 'exam_number_asc');
+      assert.strictEqual(sorted[0].id, 'p1');
+      assert.strictEqual(sorted[1].id, 'p2');
+    });
+
+    it('should reorder assessments manually with boundary bounds protection', () => {
+      const reordered = reorderAssessment(mockAssessments, 0, 2);
+      assert.strictEqual(reordered[0].id, 'ass-1');
+      assert.strictEqual(reordered[1].id, 'ass-2');
+      assert.strictEqual(reordered[2].id, 'ass-3');
+
+      // Out of bounds check returns shallow copy unmodified
+      const unchanged = reorderAssessment(mockAssessments, -1, 5);
+      assert.strictEqual(unchanged[0].id, mockAssessments[0].id);
+    });
+
+    it('should verify UnifiedCourseBuilder has sort selector, exam number inputs, date picker, and move controls', () => {
+      const filePath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const content = fs.readFileSync(filePath, 'utf8');
+
+      assert.ok(content.includes('data-testid="assessment-sort-select"'), 'Must have assessment sort select');
+      assert.ok(content.includes('value="exam_number_asc"'), 'Must support exam_number_asc');
+      assert.ok(content.includes('value="exam_number_desc"'), 'Must support exam_number_desc');
+      assert.ok(content.includes('value="date_asc"'), 'Must support date_asc');
+      assert.ok(content.includes('value="date_desc"'), 'Must support date_desc');
+      assert.ok(content.includes('value="manual"'), 'Must support manual');
+
+      assert.ok(content.includes('assessment-exam-number-'), 'Must have exam number inputs');
+      assert.ok(content.includes('assessment-due-date-'), 'Must have due date inputs');
+      assert.ok(content.includes('move-up-assessment-'), 'Must have move up controls');
+      assert.ok(content.includes('move-down-assessment-'), 'Must have move down controls');
+    });
+  });
+
+  describe('Course Metadata & Description Box Verification', () => {
+    it('should verify Course Details & Configuration includes title, code, token cost, and course description box', () => {
+      const filePath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const content = fs.readFileSync(filePath, 'utf8');
+
+      assert.ok(
+        content.includes('Course Details & Configuration'),
+        'Must contain Course Details & Configuration header'
+      );
+      assert.ok(
+        content.includes('data-testid="course-title-input"'),
+        'Must have course-title-input'
+      );
+      assert.ok(
+        content.includes('data-testid="course-code-input"'),
+        'Must have course-code-input'
+      );
+      assert.ok(
+        content.includes('data-testid="course-token-cost-input"'),
+        'Must have course-token-cost-input'
+      );
+      assert.ok(
+        content.includes('data-testid="course-description-input"'),
+        'Must have course-description-input'
+      );
+      assert.ok(
+        content.includes('Course Description'),
+        'Must display Course Description label'
+      );
+    });
+  });
+
 });
+
 
 
