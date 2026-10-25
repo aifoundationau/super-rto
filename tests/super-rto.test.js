@@ -69,6 +69,16 @@ import {
   calculateTotalTuition
 } from '../lib/courseBuilder/admissions.ts';
 
+// 7. Faculty Information Tests
+import {
+  DEFAULT_FACULTIES,
+  createDefaultFacultyInfo,
+  createFacultyStaffMember,
+  addStaffMember,
+  removeStaffMember,
+  updateStaffMember
+} from '../lib/courseBuilder/faculty.ts';
+
 describe('Super-RTO Unified Platform Test Suite', () => {
 
   describe('Unified RBAC & Director Role Verification', () => {
@@ -683,7 +693,89 @@ describe('Super-RTO Unified Platform Test Suite', () => {
     });
   });
 
+  describe('Faculty & Academic Staff Information Verification', () => {
+    it('should create default faculty info for VET course with Dean, Coordinator and Staff', () => {
+      const faculty = createDefaultFacultyInfo('BSB41419', 'Certificate IV in WHS', 4);
+
+      assert.strictEqual(faculty.facultyName, 'Faculty of Business, Technology & Vocational Safety');
+      assert.strictEqual(faculty.schoolDepartment, 'School of Work Health & Safety Compliance');
+      assert.ok(faculty.deanName.includes('Dr. Gregory Hayes'));
+      assert.strictEqual(faculty.courseCoordinatorName, 'Dr. Marcus Sterling');
+      assert.ok(faculty.staffMembers.length >= 2);
+      assert.ok(faculty.accreditations.length >= 2);
+      assert.ok(faculty.courseCoordinatorEmail.includes('@super-rto.edu.au'));
+    });
+
+    it('should create default faculty info for Higher Ed degree with ACS/Engineers Australia accreditations', () => {
+      const faculty = createDefaultFacultyInfo('CS100', 'Bachelor of Computer Science', 7);
+
+      assert.strictEqual(faculty.facultyName, 'Faculty of Engineering & Computer Science');
+      assert.strictEqual(faculty.schoolDepartment, 'School of Software Systems & Applied AI');
+      assert.ok(faculty.deanName.includes('Prof. Alistair Finch'));
+      assert.strictEqual(faculty.courseCoordinatorName, 'A/Prof. Elena Rostova');
+      assert.ok(faculty.accreditations.some((a) => a.includes('ACS')));
+    });
+
+    it('should support faculty staff member lifecycle: create, add, update, and remove', () => {
+      const initial = createDefaultFacultyInfo('BSB41419', 'Certificate IV in WHS', 4);
+      const originalCount = initial.staffMembers.length;
+
+      // 1. Create and add
+      const newStaff = createFacultyStaffMember('Dr. Liam O’Connor', 'Senior Lecturer in Ergonomics');
+      const added = addStaffMember(initial, newStaff);
+      assert.strictEqual(added.staffMembers.length, originalCount + 1);
+      assert.strictEqual(added.staffMembers[added.staffMembers.length - 1].name, 'Dr. Liam O’Connor');
+
+      // 2. Update
+      const updated = updateStaffMember(added, newStaff.id, {
+        qualifications: 'PhD, CPE, Cert IV TAE40122'
+      });
+      const targetStaff = updated.staffMembers.find((s) => s.id === newStaff.id);
+      assert.strictEqual(targetStaff.qualifications, 'PhD, CPE, Cert IV TAE40122');
+
+      // 3. Remove
+      const removed = removeStaffMember(updated, newStaff.id);
+      assert.strictEqual(removed.staffMembers.length, originalCount);
+      assert.ok(!removed.staffMembers.some((s) => s.id === newStaff.id));
+    });
+
+    it('should verify FacultyInfoPanel contains all accessible controls and confirm delete buttons', () => {
+      const panelPath = path.resolve('components/courseBuilder/FacultyInfoPanel.tsx');
+      const panelContent = fs.readFileSync(panelPath, 'utf8');
+
+      assert.ok(panelContent.includes('data-testid="faculty-info-panel"'), 'Must have faculty-info-panel');
+      assert.ok(panelContent.includes('data-testid="faculty-name-input"'), 'Must have faculty-name-input');
+      assert.ok(panelContent.includes('data-testid="faculty-school-dept-input"'), 'Must have faculty-school-dept-input');
+      assert.ok(panelContent.includes('data-testid="faculty-dean-name-input"'), 'Must have faculty-dean-name-input');
+      assert.ok(panelContent.includes('data-testid="faculty-coordinator-name-input"'), 'Must have faculty-coordinator-name-input');
+      assert.ok(panelContent.includes('data-testid="faculty-coordinator-email-input"'), 'Must have faculty-coordinator-email-input');
+      assert.ok(panelContent.includes('data-testid="add-faculty-member-btn"'), 'Must have add-faculty-member-btn');
+      assert.ok(panelContent.includes('confirm-delete-staff-'), 'Must have confirm delete staff button');
+      assert.ok(panelContent.includes('cancel-delete-staff-'), 'Must have cancel delete staff button');
+      assert.ok(panelContent.includes('Confirm Delete'), 'Must display Confirm Delete text');
+    });
+
+    it('should verify UnifiedCourseBuilder embeds FacultyInfoPanel and links governing faculty in metadata', () => {
+      const builderPath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const builderContent = fs.readFileSync(builderPath, 'utf8');
+
+      assert.ok(
+        builderContent.includes('<FacultyInfoPanel'),
+        'UnifiedCourseBuilder must embed FacultyInfoPanel'
+      );
+      assert.ok(
+        builderContent.includes('data-testid="course-meta-faculty-input"'),
+        'UnifiedCourseBuilder must have course-meta-faculty-input in Course Details'
+      );
+      assert.ok(
+        builderContent.includes('facultyInfo: createDefaultFacultyInfo'),
+        'UnifiedCourseBuilder must initialize facultyInfo in DEFAULT_COURSE'
+      );
+    });
+  });
+
 });
+
 
 
 

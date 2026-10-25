@@ -86,6 +86,12 @@ import {
   createDefaultAdmissionsProfile
 } from '@/lib/courseBuilder/admissions';
 import { ProgramAdmissionsPanel } from './ProgramAdmissionsPanel';
+import {
+  CourseFacultyInfo,
+  FacultyStaffMember,
+  createDefaultFacultyInfo
+} from '@/lib/courseBuilder/faculty';
+import { FacultyInfoPanel } from './FacultyInfoPanel';
 
 export type {
   RubricLevel,
@@ -93,7 +99,9 @@ export type {
   CourseAssessment,
   UnitPerformanceCriterion,
   AssessmentSortOption,
-  ProgramAdmissionsProfile
+  ProgramAdmissionsProfile,
+  CourseFacultyInfo,
+  FacultyStaffMember
 };
 export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine, sortAssessments, reorderAssessment };
 
@@ -122,6 +130,7 @@ export interface CourseData {
   aqfLevel: number;
   tokenCost: number;
   description: string;
+  facultyInfo?: CourseFacultyInfo;
   admissionsProfile?: ProgramAdmissionsProfile;
   units: CourseUnit[];
 }
@@ -134,6 +143,11 @@ const DEFAULT_COURSE: CourseData = {
   aqfLevel: 4,
   tokenCost: 0,
   description: 'National qualification for occupational health and safety coordinators and compliance officers.',
+  facultyInfo: createDefaultFacultyInfo(
+    'BSB41419',
+    'Certificate IV in Work Health and Safety',
+    4
+  ),
   admissionsProfile: createDefaultAdmissionsProfile(
     'BSB41419',
     'Certificate IV in Work Health and Safety',
@@ -311,6 +325,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   // Collapsible view state across all course builder layers
   const [isCourseMetaCollapsed, setIsCourseMetaCollapsed] = useState(false);
+  const [isFacultyInfoCollapsed, setIsFacultyInfoCollapsed] = useState(false);
   const [isAdmissionsPanelCollapsed, setIsAdmissionsPanelCollapsed] = useState(false);
   const [isPerformanceCriteriaCollapsed, setIsPerformanceCriteriaCollapsed] = useState(false);
   const [isUnitInfoCollapsed, setIsUnitInfoCollapsed] = useState(false);
@@ -339,6 +354,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const collapseAll = () => {
     setIsCourseMetaCollapsed(true);
+    setIsFacultyInfoCollapsed(true);
     setIsAdmissionsPanelCollapsed(true);
     setIsPerformanceCriteriaCollapsed(true);
     setIsUnitInfoCollapsed(true);
@@ -375,6 +391,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const expandAll = () => {
     setIsCourseMetaCollapsed(false);
+    setIsFacultyInfoCollapsed(false);
     setIsAdmissionsPanelCollapsed(false);
     setIsPerformanceCriteriaCollapsed(false);
     setIsUnitInfoCollapsed(false);
@@ -386,6 +403,17 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setCollapsedCriterionIds({});
     setStatusMessage('All sections, lessons, elements, and rubrics expanded.');
     setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const currentFacultyInfo =
+    course.facultyInfo ||
+    createDefaultFacultyInfo(course.code, course.title, course.aqfLevel);
+
+  const handleUpdateFacultyInfo = (updatedFaculty: CourseFacultyInfo) => {
+    setCourse({
+      ...course,
+      facultyInfo: updatedFaculty
+    });
   };
 
   const currentAdmissionsProfile =
@@ -1025,7 +1053,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
             </span>
             {isCourseMetaCollapsed && (
               <span className="text-xs text-slate-600 font-mono font-medium truncate ml-2">
-                {course.code || 'NO-CODE'} &bull; {course.title || 'Untitled'} ({course.tokenCost} tokens)
+                {course.code || 'NO-CODE'} &bull; {course.title || 'Untitled'} &bull; {currentFacultyInfo.facultyName} ({course.tokenCost} tokens)
               </span>
             )}
           </div>
@@ -1079,6 +1107,34 @@ export const UnifiedCourseBuilder: React.FC = () => {
               />
             </div>
 
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Governing Faculty</label>
+              <input
+                type="text"
+                value={currentFacultyInfo.facultyName}
+                onChange={(e) => handleUpdateFacultyInfo({ ...currentFacultyInfo, facultyName: e.target.value })}
+                data-agent-id="course-builder-meta-faculty-input"
+                data-testid="course-meta-faculty-input"
+                aria-label="Governing Faculty"
+                placeholder="e.g. Faculty of Business, Technology & Vocational Safety"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600 shadow-2xs"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Academic School / Department</label>
+              <input
+                type="text"
+                value={currentFacultyInfo.schoolDepartment}
+                onChange={(e) => handleUpdateFacultyInfo({ ...currentFacultyInfo, schoolDepartment: e.target.value })}
+                data-agent-id="course-builder-meta-school-input"
+                data-testid="course-meta-school-input"
+                aria-label="Academic School or Department"
+                placeholder="e.g. School of Work Health & Safety Compliance"
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-semibold outline-none focus:border-indigo-600 shadow-2xs"
+              />
+            </div>
+
             {/* Course Description Box */}
             <div className="md:col-span-4">
               <label className="block text-xs font-bold text-slate-700 mb-1">Course Description</label>
@@ -1096,6 +1152,15 @@ export const UnifiedCourseBuilder: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Faculty & Academic Staff Information Panel */}
+      <FacultyInfoPanel
+        facultyInfo={currentFacultyInfo}
+        onChange={handleUpdateFacultyInfo}
+        isCollapsible={true}
+        isCollapsed={isFacultyInfoCollapsed}
+        onToggleCollapse={() => setIsFacultyInfoCollapsed(!isFacultyInfoCollapsed)}
+      />
 
       {/* Program Admissions, Delivery & Tuition Profile Panel (One Comprehensive Panel) */}
       <ProgramAdmissionsPanel
