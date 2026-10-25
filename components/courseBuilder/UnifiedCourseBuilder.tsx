@@ -17,7 +17,8 @@ import {
   FolderOpen,
   Paperclip,
   Link2,
-  ExternalLink
+  ExternalLink,
+  AlignLeft
 } from 'lucide-react';
 import { toStrictIntegerTokens } from '@/lib/tokens/pricing';
 
@@ -30,6 +31,7 @@ export interface LessonBlockLink {
 export interface LessonBlock {
   id: string;
   type:
+    | 'description'
     | 'presentation'
     | 'video'
     | 'drive'
@@ -56,6 +58,7 @@ export interface CourseUnit {
   lessons: {
     id: string;
     title: string;
+    description?: string;
     estimatedMinutes: number;
     blocks: LessonBlock[];
   }[];
@@ -103,8 +106,15 @@ const DEFAULT_COURSE: CourseData = {
         {
           id: 'les-1',
           title: 'Legislative Frameworks and Work Health and Safety Acts',
+          description: 'This foundational module introduces statutory WHS duties, employer obligations under Safe Work Australia harmonised model laws, and principles for consultative workplace risk management.',
           estimatedMinutes: 45,
           blocks: [
+            {
+              id: 'blk-intro',
+              type: 'description',
+              title: 'Module Overview & Reading Instructions',
+              content: 'Students are required to review the Commonwealth Model WHS Act before attending the practical seminar. Follow the presentation slides and complete the incident research notebook.'
+            },
             {
               id: 'blk-1',
               type: 'presentation',
@@ -242,6 +252,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const handleAddBlock = (unitIdx: number, lessonIdx: number, type: LessonBlock['type']) => {
     const updatedUnits = [...course.units];
     const defaultMeta: Record<string, { title: string; defaultLinkTitle: string }> = {
+      description: { title: 'Lesson Description & Context', defaultLinkTitle: '' },
       presentation: { title: 'Presentation Slide Deck', defaultLinkTitle: 'Presentation Slides URL' },
       video: { title: 'Video Lecture', defaultLinkTitle: 'Video Lecture URL' },
       drive: { title: 'Google Drive Resource', defaultLinkTitle: 'Google Drive Folder URL' },
@@ -258,19 +269,29 @@ export const UnifiedCourseBuilder: React.FC = () => {
     const newBlockId = `blk-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const newLinkId = `link-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-    updatedUnits[unitIdx].lessons[lessonIdx].blocks.push({
-      id: newBlockId,
-      type,
-      title: meta.title,
-      url: '',
-      links: [
-        {
-          id: newLinkId,
-          title: meta.defaultLinkTitle,
-          url: ''
-        }
-      ]
-    });
+    if (type === 'description') {
+      updatedUnits[unitIdx].lessons[lessonIdx].blocks.push({
+        id: newBlockId,
+        type: 'description',
+        title: 'Detailed Lesson Description & Notes',
+        content: '',
+        links: []
+      });
+    } else {
+      updatedUnits[unitIdx].lessons[lessonIdx].blocks.push({
+        id: newBlockId,
+        type,
+        title: meta.title,
+        url: '',
+        links: [
+          {
+            id: newLinkId,
+            title: meta.defaultLinkTitle,
+            url: ''
+          }
+        ]
+      });
+    }
     setCourse({ ...course, units: updatedUnits });
   };
 
@@ -633,9 +654,121 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         </div>
                       </div>
 
+                      {/* Lesson Overview Description Textarea */}
+                      <div className="space-y-1 bg-slate-50/80 p-2.5 rounded-lg border border-slate-200">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          <span className="flex items-center gap-1.5 text-slate-700">
+                            <AlignLeft className="w-3 h-3 text-indigo-600" />
+                            <span>Lesson Overview & Paragraph Instructions</span>
+                          </span>
+                        </div>
+                        <textarea
+                          rows={2}
+                          value={les.description || ''}
+                          onChange={(e) => {
+                            const updated = [...course.units];
+                            updated[activeUnitIndex].lessons[lIdx].description = e.target.value;
+                            setCourse({ ...course, units: updated });
+                          }}
+                          data-agent-id={`course-builder-lesson-description-input-${les.id}`}
+                          data-testid={`course-builder-lesson-description-${les.id}`}
+                          aria-label={`Overview description for lesson ${les.title}`}
+                          className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded-md p-2 text-xs text-slate-800 outline-none transition-colors font-sans leading-relaxed resize-y placeholder:text-slate-400"
+                          placeholder="Type introductory paragraphs, lesson background, pedagogical focus, or learning guidance for students here..."
+                        />
+                      </div>
+
                       {/* Lesson Blocks (Elements Stack) */}
                       <div className="space-y-3 pl-4 border-l-2 border-indigo-100">
                         {les.blocks.map((blk, bIdx) => {
+                          if (blk.type === 'description') {
+                            return (
+                              <div key={blk.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2.5 shadow-2xs">
+                                {/* Description Block Header */}
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <span className="font-mono uppercase px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider flex items-center gap-1 bg-slate-200 text-slate-800 border border-slate-300">
+                                      <AlignLeft className="w-2.5 h-2.5 text-indigo-600" />
+                                      DESCRIPTION
+                                    </span>
+                                    <input
+                                      type="text"
+                                      value={blk.title}
+                                      onChange={(e) => {
+                                        const updated = [...course.units];
+                                        const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                        if (targetBlk) targetBlk.title = e.target.value;
+                                        setCourse({ ...course, units: updated });
+                                      }}
+                                      data-agent-id={`course-builder-block-title-input-${blk.id}`}
+                                      data-testid={`course-builder-block-title-${blk.id}`}
+                                      aria-label={`Block Title for ${blk.title}`}
+                                      className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-800 font-bold outline-none px-1 py-0.5 flex-1 min-w-[120px] text-xs"
+                                      placeholder="Description Block Title..."
+                                    />
+                                  </div>
+
+                                  {/* Delete with confirmation */}
+                                  <div className="shrink-0 flex items-center">
+                                    {deletingBlockId === blk.id ? (
+                                      <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteBlock(activeUnitIndex, lIdx, bIdx)}
+                                          data-agent-id={`course-builder-confirm-delete-block-${blk.id}-btn`}
+                                          data-testid={`confirm-delete-block-${blk.id}`}
+                                          aria-label={`Confirm Delete Element ${blk.title}`}
+                                          className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                                        >
+                                          <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setDeletingBlockId(null)}
+                                          data-agent-id={`course-builder-cancel-delete-block-${blk.id}-btn`}
+                                          data-testid={`cancel-delete-block-${blk.id}`}
+                                          aria-label="Cancel delete block"
+                                          className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-medium transition-colors"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setDeletingBlockId(blk.id)}
+                                        data-agent-id={`course-builder-delete-block-${blk.id}-btn`}
+                                        data-testid={`delete-block-${blk.id}`}
+                                        aria-label={`Delete Element ${blk.title}`}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                        title="Delete Element"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Paragraph Textarea */}
+                                <textarea
+                                  rows={4}
+                                  value={blk.content || ''}
+                                  onChange={(e) => {
+                                    const updated = [...course.units];
+                                    const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                    if (targetBlk) targetBlk.content = e.target.value;
+                                    setCourse({ ...course, units: updated });
+                                  }}
+                                  data-agent-id={`course-builder-block-description-textarea-${blk.id}`}
+                                  data-testid={`course-builder-block-description-${blk.id}`}
+                                  aria-label={`Paragraph content for ${blk.title}`}
+                                  className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded-lg p-2.5 text-xs text-slate-800 outline-none transition-colors font-sans leading-relaxed resize-y placeholder:text-slate-400"
+                                  placeholder="Type detailed paragraphs, module summaries, theoretical background, or study instructions here..."
+                                />
+                              </div>
+                            );
+                          }
+
                           const linksList = (blk.links && blk.links.length > 0)
                             ? blk.links
                             : [{ id: `initial-${blk.id}`, title: `${blk.title} URL`, url: blk.url || blk.content || '' }];
@@ -873,6 +1006,16 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         {/* Add Element Triggers */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1">Add Element:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'description')}
+                            data-agent-id={`course-builder-add-description-${les.id}-btn`}
+                            data-testid={`add-description-${les.id}`}
+                            aria-label="Add Paragraph Description Block"
+                            className="px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-300 text-[10px] text-slate-800 font-bold hover:bg-slate-200 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <AlignLeft className="w-2.5 h-2.5 text-indigo-600" /> + Description
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'presentation')}
