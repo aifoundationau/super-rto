@@ -21,7 +21,10 @@ import {
   AlignLeft,
   Download,
   Upload,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ChevronDown,
+  ChevronUp,
+  ChevronRight
 } from 'lucide-react';
 import { toStrictIntegerTokens } from '@/lib/tokens/pricing';
 
@@ -235,6 +238,79 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [deletingCriterionId, setDeletingCriterionId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Collapsible view state across all course builder layers
+  const [isCourseMetaCollapsed, setIsCourseMetaCollapsed] = useState(false);
+  const [isUnitInfoCollapsed, setIsUnitInfoCollapsed] = useState(false);
+  const [isLessonsSectionCollapsed, setIsLessonsSectionCollapsed] = useState(false);
+  const [isAssessmentsSectionCollapsed, setIsAssessmentsSectionCollapsed] = useState(false);
+  const [collapsedLessonIds, setCollapsedLessonIds] = useState<Record<string, boolean>>({});
+  const [collapsedBlockIds, setCollapsedBlockIds] = useState<Record<string, boolean>>({});
+  const [collapsedAssessmentIds, setCollapsedAssessmentIds] = useState<Record<string, boolean>>({});
+  const [collapsedCriterionIds, setCollapsedCriterionIds] = useState<Record<string, boolean>>({});
+
+  const toggleLessonCollapse = (id: string) => {
+    setCollapsedLessonIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleBlockCollapse = (id: string) => {
+    setCollapsedBlockIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleAssessmentCollapse = (id: string) => {
+    setCollapsedAssessmentIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleCriterionCollapse = (id: string) => {
+    setCollapsedCriterionIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const collapseAll = () => {
+    setIsCourseMetaCollapsed(true);
+    setIsUnitInfoCollapsed(true);
+    setIsLessonsSectionCollapsed(false);
+    setIsAssessmentsSectionCollapsed(false);
+
+    const lessonMap: Record<string, boolean> = {};
+    const blockMap: Record<string, boolean> = {};
+    const assMap: Record<string, boolean> = {};
+    const critMap: Record<string, boolean> = {};
+
+    course.units.forEach((u) => {
+      u.lessons.forEach((l) => {
+        lessonMap[l.id] = true;
+        (l.blocks || []).forEach((b) => {
+          blockMap[b.id] = true;
+        });
+      });
+      (u.assessments || []).forEach((a) => {
+        assMap[a.id] = true;
+        (a.criteria || []).forEach((c, cIdx) => {
+          critMap[c.id || `${a.id}-${cIdx}`] = true;
+        });
+      });
+    });
+
+    setCollapsedLessonIds(lessonMap);
+    setCollapsedBlockIds(blockMap);
+    setCollapsedAssessmentIds(assMap);
+    setCollapsedCriterionIds(critMap);
+    setStatusMessage('All sections, lessons, elements, and rubrics collapsed.');
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const expandAll = () => {
+    setIsCourseMetaCollapsed(false);
+    setIsUnitInfoCollapsed(false);
+    setIsLessonsSectionCollapsed(false);
+    setIsAssessmentsSectionCollapsed(false);
+    setCollapsedLessonIds({});
+    setCollapsedBlockIds({});
+    setCollapsedAssessmentIds({});
+    setCollapsedCriterionIds({});
+    setStatusMessage('All sections, lessons, elements, and rubrics expanded.');
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
 
   const activeUnit = course.units[activeUnitIndex] || course.units[0];
 
@@ -560,8 +636,35 @@ export const UnifiedCourseBuilder: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons & Global Expand/Collapse */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              data-agent-id="course-builder-expand-all-btn"
+              data-testid="expand-all-btn"
+              aria-label="Expand All Course Builder Elements"
+              onClick={expandAll}
+              className="px-2.5 py-1 text-slate-700 hover:text-slate-900 hover:bg-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+              title="Expand all sections, lessons, elements, and rubrics"
+            >
+              <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Expand All</span>
+            </button>
+            <button
+              type="button"
+              data-agent-id="course-builder-collapse-all-btn"
+              data-testid="collapse-all-btn"
+              aria-label="Collapse All Course Builder Elements"
+              onClick={collapseAll}
+              className="px-2.5 py-1 text-slate-700 hover:text-slate-900 hover:bg-white rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+              title="Collapse all sections, lessons, elements, and rubrics"
+            >
+              <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+              <span>Collapse All</span>
+            </button>
+          </div>
+
           <button
             type="button"
             data-testid="ai-ingest-btn"
@@ -594,39 +697,80 @@ export const UnifiedCourseBuilder: React.FC = () => {
         </div>
       )}
 
-      {/* Top Level Course Meta Form */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-        <div className="md:col-span-2">
-          <label className="block text-xs font-bold text-slate-700 mb-1">Course Title</label>
-          <input
-            type="text"
-            value={course.title}
-            onChange={(e) => setCourse({ ...course, title: e.target.value })}
-            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 shadow-2xs"
-          />
+      {/* Top Level Course Meta Form (Collapsible) */}
+      <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-2xs transition-all">
+        <div
+          onClick={() => setIsCourseMetaCollapsed(!isCourseMetaCollapsed)}
+          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <button
+              type="button"
+              aria-expanded={!isCourseMetaCollapsed}
+              aria-label="Toggle Course Metadata"
+              data-agent-id="course-builder-toggle-meta-btn"
+              data-testid="toggle-course-meta-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsCourseMetaCollapsed(!isCourseMetaCollapsed);
+              }}
+              className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
+            >
+              {isCourseMetaCollapsed ? (
+                <ChevronRight className="w-4 h-4 text-indigo-600" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-indigo-600" />
+              )}
+            </button>
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Course Details & Configuration
+            </span>
+            {isCourseMetaCollapsed && (
+              <span className="text-xs text-slate-600 font-mono font-medium truncate ml-2">
+                {course.code || 'NO-CODE'} &bull; {course.title || 'Untitled'} ({course.tokenCost} tokens)
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">
+            {isCourseMetaCollapsed ? 'Click to expand' : 'Click to collapse'}
+          </span>
         </div>
 
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">Course Code</label>
-          <input
-            type="text"
-            value={course.code}
-            onChange={(e) => setCourse({ ...course, code: e.target.value })}
-            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-mono font-bold outline-none focus:border-indigo-600 shadow-2xs"
-          />
-        </div>
+        {!isCourseMetaCollapsed && (
+          <div className="p-4 pt-0 border-t border-slate-200/60 grid grid-cols-1 md:grid-cols-4 gap-4 mt-1">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-700 mb-1">Course Title</label>
+              <input
+                type="text"
+                value={course.title}
+                onChange={(e) => setCourse({ ...course, title: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 shadow-2xs"
+              />
+            </div>
 
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">Token Cost (Strict Integer)</label>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={course.tokenCost}
-            onChange={(e) => setCourse({ ...course, tokenCost: toStrictIntegerTokens(parseInt(e.target.value) || 0) })}
-            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-amber-700 font-mono font-bold outline-none focus:border-amber-600 shadow-2xs"
-          />
-        </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Course Code</label>
+              <input
+                type="text"
+                value={course.code}
+                onChange={(e) => setCourse({ ...course, code: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-mono font-bold outline-none focus:border-indigo-600 shadow-2xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Token Cost (Strict Integer)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={course.tokenCost}
+                onChange={(e) => setCourse({ ...course, tokenCost: toStrictIntegerTokens(parseInt(e.target.value) || 0) })}
+                className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-amber-700 font-mono font-bold outline-none focus:border-amber-600 shadow-2xs"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Units Sidebar & Curriculum Editor */}
@@ -680,196 +824,329 @@ export const UnifiedCourseBuilder: React.FC = () => {
           {activeUnit && (
             <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Unit Title</label>
-                  <input
-                    type="text"
-                    value={activeUnit.unitTitle}
-                    onChange={(e) => {
-                      const updated = [...course.units];
-                      updated[activeUnitIndex].unitTitle = e.target.value;
-                      setCourse({ ...course, units: updated });
-                    }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 shadow-2xs"
-                  />
+              {/* Unit Info Header & Fields (Collapsible) */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs transition-all">
+                <div
+                  onClick={() => setIsUnitInfoCollapsed(!isUnitInfoCollapsed)}
+                  className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                >
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <button
+                      type="button"
+                      aria-expanded={!isUnitInfoCollapsed}
+                      aria-label="Toggle Unit Info"
+                      data-agent-id="course-builder-toggle-unit-info-btn"
+                      data-testid="toggle-unit-info-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsUnitInfoCollapsed(!isUnitInfoCollapsed);
+                      }}
+                      className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors"
+                    >
+                      {isUnitInfoCollapsed ? (
+                        <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
+                      )}
+                    </button>
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Unit of Competency Details
+                    </span>
+                    {isUnitInfoCollapsed && (
+                      <span className="text-xs text-slate-600 font-medium truncate ml-2">
+                        {activeUnit.unitCode}: {activeUnit.unitTitle} ({activeUnit.nominalHours}h)
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">
+                    {isUnitInfoCollapsed ? 'Click to expand' : 'Click to collapse'}
+                  </span>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nominal Hours</label>
-                  <input
-                    type="number"
-                    value={activeUnit.nominalHours}
-                    onChange={(e) => {
-                      const updated = [...course.units];
-                      updated[activeUnitIndex].nominalHours = parseInt(e.target.value) || 40;
-                      setCourse({ ...course, units: updated });
-                    }}
-                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-mono font-bold outline-none focus:border-indigo-600 shadow-2xs"
-                  />
-                </div>
+
+                {!isUnitInfoCollapsed && (
+                  <div className="p-4 pt-0 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Unit Title</label>
+                      <input
+                        type="text"
+                        value={activeUnit.unitTitle}
+                        onChange={(e) => {
+                          const updated = [...course.units];
+                          updated[activeUnitIndex].unitTitle = e.target.value;
+                          setCourse({ ...course, units: updated });
+                        }}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 focus:bg-white shadow-2xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nominal Hours</label>
+                      <input
+                        type="number"
+                        value={activeUnit.nominalHours}
+                        onChange={(e) => {
+                          const updated = [...course.units];
+                          updated[activeUnitIndex].nominalHours = parseInt(e.target.value) || 40;
+                          setCourse({ ...course, units: updated });
+                        }}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-mono font-bold outline-none focus:border-indigo-600 focus:bg-white shadow-2xs"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Lessons Stack */}
+              {/* Lessons Stack Section (Collapsible) */}
               <div className="space-y-3 pt-2 border-t border-slate-200">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <BookOpen className="w-4 h-4 text-emerald-600" />
-                    <span>Modular Lessons Stack</span>
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => handleAddLesson(activeUnitIndex)}
-                    data-agent-id="course-builder-add-lesson-btn"
-                    data-testid="add-lesson-btn"
-                    aria-label="Add Modular Lesson"
-                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Lesson (45m)
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsLessonsSectionCollapsed(!isLessonsSectionCollapsed)}
+                      data-agent-id="course-builder-toggle-lessons-section-btn"
+                      data-testid="toggle-lessons-section-btn"
+                      aria-label="Toggle Modular Lessons Section"
+                      aria-expanded={!isLessonsSectionCollapsed}
+                      className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                    >
+                      {isLessonsSectionCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-emerald-600" />
+                      )}
+                    </button>
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <BookOpen className="w-4 h-4 text-emerald-600" />
+                      <span>Modular Lessons Stack</span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono">
+                        {activeUnit.lessons.length}
+                      </span>
+                    </h4>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allCollapsed = activeUnit.lessons.every((l) => collapsedLessonIds[l.id]);
+                        const newMap = { ...collapsedLessonIds };
+                        activeUnit.lessons.forEach((l) => {
+                          newMap[l.id] = !allCollapsed;
+                        });
+                        setCollapsedLessonIds(newMap);
+                      }}
+                      data-agent-id="course-builder-toggle-all-lessons-btn"
+                      data-testid="toggle-all-lessons-btn"
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 transition-colors shadow-2xs"
+                    >
+                      {activeUnit.lessons.every((l) => collapsedLessonIds[l.id]) ? 'Expand All Lessons' : 'Collapse All Lessons'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddLesson(activeUnitIndex)}
+                      data-agent-id="course-builder-add-lesson-btn"
+                      data-testid="add-lesson-btn"
+                      aria-label="Add Modular Lesson"
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Lesson (45m)
+                    </button>
+                  </div>
                 </div>
 
-                {activeUnit.lessons.length === 0 ? (
-                  <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
-                    <BookOpen className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
-                    <p className="text-xs font-medium text-slate-600">No modular lessons in this unit yet.</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Click &ldquo;Add Lesson (45m)&rdquo; above to stack modular lessons.</p>
-                  </div>
-                ) : (
-                  activeUnit.lessons.map((les, lIdx) => (
-                    <div key={les.id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
-                      {/* Lesson Header */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-mono text-[10px] font-bold shrink-0">
-                            {lIdx + 1}
-                          </span>
-                          <input
-                            type="text"
-                            value={les.title}
-                            onChange={(e) => {
-                              const updated = [...course.units];
-                              updated[activeUnitIndex].lessons[lIdx].title = e.target.value;
-                              setCourse({ ...course, units: updated });
-                            }}
-                            data-agent-id={`course-builder-lesson-title-input-${les.id}`}
-                            data-testid={`course-builder-lesson-title-${les.id}`}
-                            aria-label={`Lesson ${lIdx + 1} Title`}
-                            className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5 flex-1 min-w-[120px]"
-                            placeholder="Lesson Title..."
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono font-semibold">
-                            <Clock className="w-3 h-3 text-slate-400" />
-                            <input
-                              type="number"
-                              value={les.estimatedMinutes}
-                              onChange={(e) => {
-                                const updated = [...course.units];
-                                updated[activeUnitIndex].lessons[lIdx].estimatedMinutes = parseInt(e.target.value) || 45;
-                                setCourse({ ...course, units: updated });
-                              }}
-                              data-agent-id={`course-builder-lesson-duration-input-${les.id}`}
-                              data-testid={`course-builder-lesson-duration-${les.id}`}
-                              aria-label={`Lesson ${lIdx + 1} Duration Minutes`}
-                              className="w-10 px-1 py-0.5 text-[10px] font-mono border border-slate-200 rounded text-center outline-none focus:border-indigo-600"
-                            />
-                            <span>m</span>
-                          </div>
-
-                          {deletingLessonId === les.id ? (
-                            <div className="flex items-center gap-1 animate-in fade-in duration-200">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteLesson(activeUnitIndex, lIdx)}
-                                data-agent-id={`course-builder-confirm-delete-lesson-${les.id}-btn`}
-                                data-testid={`confirm-delete-lesson-${les.id}`}
-                                aria-label={`Confirm Delete Lesson ${les.title}`}
-                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
-                              >
-                                <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeletingLessonId(null)}
-                                data-agent-id={`course-builder-cancel-delete-lesson-${les.id}-btn`}
-                                data-testid={`cancel-delete-lesson-${les.id}`}
-                                aria-label="Cancel delete lesson"
-                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setDeletingLessonId(les.id)}
-                              data-agent-id={`course-builder-delete-lesson-${les.id}-btn`}
-                              data-testid={`delete-lesson-${les.id}`}
-                              aria-label={`Delete Lesson ${les.title}`}
-                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                              title="Delete Lesson"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
+                {!isLessonsSectionCollapsed && (
+                  <>
+                    {activeUnit.lessons.length === 0 ? (
+                      <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
+                        <BookOpen className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
+                        <p className="text-xs font-medium text-slate-600">No modular lessons in this unit yet.</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Click &ldquo;Add Lesson (45m)&rdquo; above to stack modular lessons.</p>
                       </div>
-
-                      {/* Lesson Overview Description Textarea */}
-                      <div className="space-y-1 bg-slate-50/80 p-2.5 rounded-lg border border-slate-200">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          <span className="flex items-center gap-1.5 text-slate-700">
-                            <AlignLeft className="w-3 h-3 text-indigo-600" />
-                            <span>Lesson Overview & Paragraph Instructions</span>
-                          </span>
-                        </div>
-                        <textarea
-                          rows={2}
-                          value={les.description || ''}
-                          onChange={(e) => {
-                            const updated = [...course.units];
-                            updated[activeUnitIndex].lessons[lIdx].description = e.target.value;
-                            setCourse({ ...course, units: updated });
-                          }}
-                          data-agent-id={`course-builder-lesson-description-input-${les.id}`}
-                          data-testid={`course-builder-lesson-description-${les.id}`}
-                          aria-label={`Overview description for lesson ${les.title}`}
-                          className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded-md p-2 text-xs text-slate-800 outline-none transition-colors font-sans leading-relaxed resize-y placeholder:text-slate-400"
-                          placeholder="Type introductory paragraphs, lesson background, pedagogical focus, or learning guidance for students here..."
-                        />
-                      </div>
-
-                      {/* Lesson Blocks (Elements Stack) */}
-                      <div className="space-y-3 pl-4 border-l-2 border-indigo-100">
-                        {les.blocks.map((blk, bIdx) => {
-                          if (blk.type === 'description') {
-                            return (
-                              <div key={blk.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2.5 shadow-2xs">
-                                {/* Description Block Header */}
-                                <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
-                                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <span className="font-mono uppercase px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider flex items-center gap-1 bg-slate-200 text-slate-800 border border-slate-300">
-                                      <AlignLeft className="w-2.5 h-2.5 text-indigo-600" />
-                                      DESCRIPTION
+                    ) : (
+                      activeUnit.lessons.map((les, lIdx) => {
+                        const isLessonCollapsed = !!collapsedLessonIds[les.id];
+                        return (
+                          <div key={les.id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs transition-all">
+                            {/* Lesson Header (Collapsible) */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleLessonCollapse(les.id)}
+                                  data-agent-id={`course-builder-toggle-lesson-${les.id}-btn`}
+                                  data-testid={`toggle-lesson-${les.id}`}
+                                  aria-label={`Toggle Lesson ${les.title}`}
+                                  aria-expanded={!isLessonCollapsed}
+                                  className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded transition-colors"
+                                  title={isLessonCollapsed ? 'Expand Lesson' : 'Collapse Lesson'}
+                                >
+                                  {isLessonCollapsed ? (
+                                    <ChevronRight className="w-4 h-4 text-indigo-600" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-indigo-600" />
+                                  )}
+                                </button>
+                                <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-mono text-[10px] font-bold shrink-0">
+                                  {lIdx + 1}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={les.title}
+                                  onChange={(e) => {
+                                    const updated = [...course.units];
+                                    updated[activeUnitIndex].lessons[lIdx].title = e.target.value;
+                                    setCourse({ ...course, units: updated });
+                                  }}
+                                  data-agent-id={`course-builder-lesson-title-input-${les.id}`}
+                                  data-testid={`course-builder-lesson-title-${les.id}`}
+                                  aria-label={`Lesson ${lIdx + 1} Title`}
+                                  className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5 flex-1 min-w-[120px]"
+                                  placeholder="Lesson Title..."
+                                />
+                                {isLessonCollapsed && (
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-mono font-medium">
+                                      {les.estimatedMinutes}m
                                     </span>
+                                    <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-medium border border-indigo-100">
+                                      {les.blocks.length} elements
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {!isLessonCollapsed && (
+                                  <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono font-semibold">
+                                    <Clock className="w-3 h-3 text-slate-400" />
                                     <input
-                                      type="text"
-                                      value={blk.title}
+                                      type="number"
+                                      value={les.estimatedMinutes}
                                       onChange={(e) => {
                                         const updated = [...course.units];
-                                        const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
-                                        if (targetBlk) targetBlk.title = e.target.value;
+                                        updated[activeUnitIndex].lessons[lIdx].estimatedMinutes = parseInt(e.target.value) || 45;
                                         setCourse({ ...course, units: updated });
                                       }}
-                                      data-agent-id={`course-builder-block-title-input-${blk.id}`}
-                                      data-testid={`course-builder-block-title-${blk.id}`}
-                                      aria-label={`Block Title for ${blk.title}`}
-                                      className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-800 font-bold outline-none px-1 py-0.5 flex-1 min-w-[120px] text-xs"
-                                      placeholder="Description Block Title..."
+                                      data-agent-id={`course-builder-lesson-duration-input-${les.id}`}
+                                      data-testid={`course-builder-lesson-duration-${les.id}`}
+                                      aria-label={`Lesson ${lIdx + 1} Duration Minutes`}
+                                      className="w-10 px-1 py-0.5 text-[10px] font-mono border border-slate-200 rounded text-center outline-none focus:border-indigo-600"
                                     />
+                                    <span>m</span>
                                   </div>
+                                )}
+
+                                {deletingLessonId === les.id ? (
+                                  <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteLesson(activeUnitIndex, lIdx)}
+                                      data-agent-id={`course-builder-confirm-delete-lesson-${les.id}-btn`}
+                                      data-testid={`confirm-delete-lesson-${les.id}`}
+                                      aria-label={`Confirm Delete Lesson ${les.title}`}
+                                      className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingLessonId(null)}
+                                      data-agent-id={`course-builder-cancel-delete-lesson-${les.id}-btn`}
+                                      data-testid={`cancel-delete-lesson-${les.id}`}
+                                      aria-label="Cancel delete lesson"
+                                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingLessonId(les.id)}
+                                    data-agent-id={`course-builder-delete-lesson-${les.id}-btn`}
+                                    data-testid={`delete-lesson-${les.id}`}
+                                    aria-label={`Delete Lesson ${les.title}`}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="Delete Lesson"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Collapsible Lesson Body */}
+                            {!isLessonCollapsed && (
+                              <div className="space-y-3 pt-1">
+                                {/* Lesson Overview Description Textarea */}
+                                <div className="space-y-1 bg-slate-50/80 p-2.5 rounded-lg border border-slate-200">
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                    <span className="flex items-center gap-1.5 text-slate-700">
+                                      <AlignLeft className="w-3 h-3 text-indigo-600" />
+                                      <span>Lesson Overview & Paragraph Instructions</span>
+                                    </span>
+                                  </div>
+                                  <textarea
+                                    rows={2}
+                                    value={les.description || ''}
+                                    onChange={(e) => {
+                                      const updated = [...course.units];
+                                      updated[activeUnitIndex].lessons[lIdx].description = e.target.value;
+                                      setCourse({ ...course, units: updated });
+                                    }}
+                                    data-agent-id={`course-builder-lesson-description-input-${les.id}`}
+                                    data-testid={`course-builder-lesson-description-${les.id}`}
+                                    aria-label={`Overview description for lesson ${les.title}`}
+                                    className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded-md p-2 text-xs text-slate-800 outline-none transition-colors font-sans leading-relaxed resize-y placeholder:text-slate-400"
+                                    placeholder="Type introductory paragraphs, lesson background, pedagogical focus, or learning guidance for students here..."
+                                  />
+                                </div>
+
+                                {/* Lesson Blocks (Elements Stack) */}
+                                <div className="space-y-3 pl-4 border-l-2 border-indigo-100">
+                                  {les.blocks.map((blk, bIdx) => {
+                                    const isBlockCollapsed = !!collapsedBlockIds[blk.id];
+                                    if (blk.type === 'description') {
+                                      return (
+                                        <div key={blk.id} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-2.5 shadow-2xs transition-all">
+                                          {/* Description Block Header */}
+                                          <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
+                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => toggleBlockCollapse(blk.id)}
+                                                data-agent-id={`course-builder-toggle-block-${blk.id}-btn`}
+                                                data-testid={`toggle-block-${blk.id}`}
+                                                aria-label={`Toggle Element ${blk.title}`}
+                                                aria-expanded={!isBlockCollapsed}
+                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 rounded transition-colors"
+                                                title={isBlockCollapsed ? 'Expand Block' : 'Collapse Block'}
+                                              >
+                                                {isBlockCollapsed ? (
+                                                  <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
+                                                ) : (
+                                                  <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
+                                                )}
+                                              </button>
+                                              <span className="font-mono uppercase px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider flex items-center gap-1 bg-slate-200 text-slate-800 border border-slate-300">
+                                                <AlignLeft className="w-2.5 h-2.5 text-indigo-600" />
+                                                DESCRIPTION
+                                              </span>
+                                              <input
+                                                type="text"
+                                                value={blk.title}
+                                                onChange={(e) => {
+                                                  const updated = [...course.units];
+                                                  const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                                  if (targetBlk) targetBlk.title = e.target.value;
+                                                  setCourse({ ...course, units: updated });
+                                                }}
+                                                data-agent-id={`course-builder-block-title-input-${blk.id}`}
+                                                data-testid={`course-builder-block-title-${blk.id}`}
+                                                aria-label={`Block Title for ${blk.title}`}
+                                                className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-800 font-bold outline-none px-1 py-0.5 flex-1 min-w-[120px] text-xs"
+                                                placeholder="Description Block Title..."
+                                              />
+                                            </div>
 
                                   {/* Delete with confirmation */}
                                   <div className="shrink-0 flex items-center">
@@ -912,22 +1189,24 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                   </div>
                                 </div>
 
-                                {/* Paragraph Textarea */}
-                                <textarea
-                                  rows={4}
-                                  value={blk.content || ''}
-                                  onChange={(e) => {
-                                    const updated = [...course.units];
-                                    const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
-                                    if (targetBlk) targetBlk.content = e.target.value;
-                                    setCourse({ ...course, units: updated });
-                                  }}
-                                  data-agent-id={`course-builder-block-description-textarea-${blk.id}`}
-                                  data-testid={`course-builder-block-description-${blk.id}`}
-                                  aria-label={`Paragraph content for ${blk.title}`}
-                                  className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded-lg p-2.5 text-xs text-slate-800 outline-none transition-colors font-sans leading-relaxed resize-y placeholder:text-slate-400"
-                                  placeholder="Type detailed paragraphs, module summaries, theoretical background, or study instructions here..."
-                                />
+                                {/* Paragraph Textarea (Collapsible) */}
+                                {!isBlockCollapsed && (
+                                  <textarea
+                                    rows={4}
+                                    value={blk.content || ''}
+                                    onChange={(e) => {
+                                      const updated = [...course.units];
+                                      const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                      if (targetBlk) targetBlk.content = e.target.value;
+                                      setCourse({ ...course, units: updated });
+                                    }}
+                                    data-agent-id={`course-builder-block-description-textarea-${blk.id}`}
+                                    data-testid={`course-builder-block-description-${blk.id}`}
+                                    aria-label={`Paragraph content for ${blk.title}`}
+                                    className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded-lg p-2.5 text-xs text-slate-800 outline-none transition-colors font-sans leading-relaxed resize-y placeholder:text-slate-400"
+                                    placeholder="Type detailed paragraphs, module summaries, theoretical background, or study instructions here..."
+                                  />
+                                )}
                               </div>
                             );
                           }
@@ -941,6 +1220,22 @@ export const UnifiedCourseBuilder: React.FC = () => {
                               {/* Element Header */}
                               <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
                                 <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleBlockCollapse(blk.id)}
+                                    data-agent-id={`course-builder-toggle-block-${blk.id}-btn`}
+                                    data-testid={`toggle-block-${blk.id}`}
+                                    aria-label={`Toggle Element ${blk.title}`}
+                                    aria-expanded={!isBlockCollapsed}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 rounded transition-colors"
+                                    title={isBlockCollapsed ? 'Expand Element' : 'Collapse Element'}
+                                  >
+                                    {isBlockCollapsed ? (
+                                      <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
+                                    ) : (
+                                      <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
+                                    )}
+                                  </button>
                                   <span className={`font-mono uppercase px-2 py-0.5 rounded text-[9px] font-semibold tracking-wider flex items-center gap-1 ${
                                     blk.type === 'presentation' ? 'bg-indigo-100 text-indigo-900 border border-indigo-200' :
                                     blk.type === 'video' || blk.type === 'youtube_video' ? 'bg-rose-100 text-rose-900 border border-rose-200' :
@@ -973,6 +1268,11 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                     className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-800 font-bold outline-none px-1 py-0.5 flex-1 min-w-[120px] text-xs"
                                     placeholder="Element Title..."
                                   />
+                                  {isBlockCollapsed && (
+                                    <span className="text-[9px] font-mono font-medium px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 shrink-0">
+                                      {linksList.length} link{linksList.length === 1 ? '' : 's'}
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Element Delete with Two-step Confirmation */}
@@ -1016,8 +1316,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                 </div>
                               </div>
 
-                              {/* Multi-Link List Nestled Under This Element */}
-                              <div className="space-y-2 pl-3 border-l-2 border-indigo-200/70">
+                              {/* Multi-Link List Nestled Under This Element (Collapsible) */}
+                              {!isBlockCollapsed && (
+                                <div className="space-y-2 pl-3 border-l-2 border-indigo-200/70">
                                 {linksList.map((linkItem, linkIdx) => (
                                   <div key={linkItem.id} className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-1.5 shadow-2xs">
                                     <div className="flex items-center justify-between gap-2">
@@ -1162,8 +1463,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                   </select>
                                 </div>
                               </div>
-                            </div>
-                          );
+                            )}
+                          </div>
+                        );
                         })}
 
                         {/* Add Element Triggers */}
@@ -1242,25 +1544,67 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </>
+      )}
+    </div>
 
               {/* Assessments & Rubrics (Summative & Formative with 5 Levels) */}
               <div className="space-y-4 pt-4 border-t border-slate-200">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <Award className="w-4 h-4 text-amber-600" />
-                      <span>Assessments & Rubrics (Summative & Formative)</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      AQF competency rubrics with 5 performance levels (NYC to Exemplary) & CSV import/export.
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAssessmentsSectionCollapsed(!isAssessmentsSectionCollapsed)}
+                      data-agent-id="course-builder-toggle-assessments-section-btn"
+                      data-testid="toggle-assessments-section-btn"
+                      aria-label="Toggle Assessments & Rubrics Section"
+                      aria-expanded={!isAssessmentsSectionCollapsed}
+                      className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                      title={isAssessmentsSectionCollapsed ? 'Expand Assessments Section' : 'Collapse Assessments Section'}
+                    >
+                      {isAssessmentsSectionCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-amber-600" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-amber-600" />
+                      )}
+                    </button>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-amber-600" />
+                        <span>Assessments & Rubrics (Summative & Formative)</span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-mono">
+                          {activeUnit.assessments.length}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        AQF competency rubrics with 5 performance levels (NYC to Exemplary) & CSV import/export.
+                      </p>
+                    </div>
                   </div>
 
                   {/* Assessment Actions Toolbar */}
                   <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allCollapsed = activeUnit.assessments.every((a) => collapsedAssessmentIds[a.id]);
+                        const newMap = { ...collapsedAssessmentIds };
+                        activeUnit.assessments.forEach((a) => {
+                          newMap[a.id] = !allCollapsed;
+                        });
+                        setCollapsedAssessmentIds(newMap);
+                      }}
+                      data-agent-id="course-builder-toggle-all-assessments-btn"
+                      data-testid="toggle-all-assessments-btn"
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 transition-colors shadow-2xs"
+                    >
+                      {activeUnit.assessments.every((a) => collapsedAssessmentIds[a.id]) ? 'Expand All Assessments' : 'Collapse All Assessments'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleAddAssessment('formative')}
@@ -1343,187 +1687,103 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   </div>
                 )}
 
-                {activeUnit.assessments.length === 0 ? (
-                  <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
-                    <Award className="w-8 h-8 text-slate-400 mx-auto" />
-                    <p className="text-xs font-bold text-slate-700">No assessments defined for this unit.</p>
-                    <p className="text-[11px] text-slate-500">
-                      Click &ldquo;+ Formative&rdquo;, &ldquo;+ Summative&rdquo;, or &ldquo;Upload CSV&rdquo; to populate assessment rubrics with 5 levels.
-                    </p>
-                  </div>
-                ) : (
-                  activeUnit.assessments.map((ass, assIdx) => (
-                    <div
-                      key={ass.id}
-                      className={`bg-white border rounded-xl p-4 text-xs space-y-3 shadow-2xs ${
-                        ass.type === 'formative' ? 'border-teal-300' : 'border-amber-300'
-                      }`}
-                    >
-                      {/* Assessment Header */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0 ${
-                              ass.type === 'formative'
-                                ? 'bg-teal-50 text-teal-800 border-teal-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                {!isAssessmentsSectionCollapsed && (
+                  <>
+                    {activeUnit.assessments.length === 0 ? (
+                      <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
+                        <Award className="w-8 h-8 text-slate-400 mx-auto" />
+                        <p className="text-xs font-bold text-slate-700">No assessments defined for this unit.</p>
+                        <p className="text-[11px] text-slate-500">
+                          Click &ldquo;+ Formative&rdquo;, &ldquo;+ Summative&rdquo;, or &ldquo;Upload CSV&rdquo; to populate assessment rubrics with 5 levels.
+                        </p>
+                      </div>
+                    ) : (
+                      activeUnit.assessments.map((ass, assIdx) => {
+                        const isAssessmentCollapsed = !!collapsedAssessmentIds[ass.id];
+                        return (
+                          <div
+                            key={ass.id}
+                            className={`bg-white border rounded-xl p-4 text-xs space-y-3 shadow-2xs ${
+                              ass.type === 'formative' ? 'border-teal-300' : 'border-amber-300'
                             }`}
                           >
-                            {ass.type}
-                          </span>
-                          <input
-                            type="text"
-                            value={ass.title}
-                            onChange={(e) => {
-                              const updated = [...course.units];
-                              updated[activeUnitIndex].assessments[assIdx].title = e.target.value;
-                              setCourse({ ...course, units: updated });
-                            }}
-                            data-agent-id={`course-builder-assessment-title-input-${ass.id}`}
-                            data-testid={`course-builder-assessment-title-${ass.id}`}
-                            aria-label={`Title for Assessment ${assIdx + 1}`}
-                            className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5 flex-1 min-w-[140px]"
-                            placeholder="Assessment Title..."
-                          />
-                        </div>
-
-                        {/* Assessment Deletion with Two-step Confirmation */}
-                        <div className="shrink-0 flex items-center">
-                          {deletingAssessmentId === ass.id ? (
-                            <div className="flex items-center gap-1 animate-in fade-in duration-200">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteAssessment(assIdx)}
-                                data-agent-id={`course-builder-confirm-delete-assessment-${ass.id}-btn`}
-                                data-testid={`confirm-delete-assessment-${ass.id}`}
-                                aria-label={`Confirm Delete Assessment ${ass.title}`}
-                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
-                              >
-                                <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeletingAssessmentId(null)}
-                                data-agent-id={`course-builder-cancel-delete-assessment-${ass.id}-btn`}
-                                data-testid={`cancel-delete-assessment-${ass.id}`}
-                                aria-label="Cancel delete assessment"
-                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setDeletingAssessmentId(ass.id)}
-                              data-agent-id={`course-builder-delete-assessment-${ass.id}-btn`}
-                              data-testid={`delete-assessment-${ass.id}`}
-                              aria-label={`Delete Assessment ${ass.title}`}
-                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                              title="Delete Assessment"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Assessment Description */}
-                      <textarea
-                        rows={2}
-                        value={ass.description}
-                        onChange={(e) => {
-                          const updated = [...course.units];
-                          updated[activeUnitIndex].assessments[assIdx].description = e.target.value;
-                          setCourse({ ...course, units: updated });
-                        }}
-                        data-agent-id={`course-builder-assessment-description-input-${ass.id}`}
-                        data-testid={`course-builder-assessment-description-${ass.id}`}
-                        aria-label={`Description for ${ass.title}`}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-indigo-600 focus:bg-white transition-colors"
-                        placeholder="Assessment instructions, scope, evidence submission criteria..."
-                      />
-
-                      {/* Criteria & 5-Level Rubrics */}
-                      <div className="space-y-3 pt-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                            Performance Criteria & 5-Level Rubrics
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleAddCriterion(assIdx)}
-                            data-agent-id={`course-builder-add-criterion-${ass.id}-btn`}
-                            data-testid={`add-criterion-${ass.id}`}
-                            aria-label={`Add Criterion to Assessment ${ass.title}`}
-                            className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[10px] text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-1 transition-colors"
-                          >
-                            <Plus className="w-3 h-3 text-indigo-600" /> + Add Criterion
-                          </button>
-                        </div>
-
-                        {ass.criteria.map((c, critIdx) => (
-                          <div key={c.id || critIdx} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                            {/* Criterion Header */}
+                            {/* Assessment Header */}
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-mono text-[9px] font-bold shrink-0">
-                                  {critIdx + 1}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleAssessmentCollapse(ass.id)}
+                                  data-agent-id={`course-builder-toggle-assessment-${ass.id}-btn`}
+                                  data-testid={`toggle-assessment-${ass.id}`}
+                                  aria-label={`Toggle Assessment ${ass.title}`}
+                                  aria-expanded={!isAssessmentCollapsed}
+                                  className="p-1 text-slate-500 hover:text-amber-600 hover:bg-slate-100 rounded transition-colors"
+                                  title={isAssessmentCollapsed ? 'Expand Assessment' : 'Collapse Assessment'}
+                                >
+                                  {isAssessmentCollapsed ? (
+                                    <ChevronRight className="w-4 h-4 text-amber-600" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-amber-600" />
+                                  )}
+                                </button>
+                                <span
+                                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border shrink-0 ${
+                                    ass.type === 'formative'
+                                      ? 'bg-teal-50 text-teal-800 border-teal-200'
+                                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                                  }`}
+                                >
+                                  {ass.type}
                                 </span>
                                 <input
                                   type="text"
-                                  value={c.name}
+                                  value={ass.title}
                                   onChange={(e) => {
                                     const updated = [...course.units];
-                                    updated[activeUnitIndex].assessments[assIdx].criteria[critIdx].name = e.target.value;
+                                    updated[activeUnitIndex].assessments[assIdx].title = e.target.value;
                                     setCourse({ ...course, units: updated });
                                   }}
-                                  data-agent-id={`course-builder-criterion-name-input-${c.id || critIdx}`}
-                                  data-testid={`course-builder-criterion-name-${c.id || critIdx}`}
-                                  aria-label={`Name for Criterion ${critIdx + 1}`}
-                                  className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-800 outline-none px-1 py-0.5 flex-1 min-w-[120px]"
-                                  placeholder="Criterion Name..."
+                                  data-agent-id={`course-builder-assessment-title-input-${ass.id}`}
+                                  data-testid={`course-builder-assessment-title-${ass.id}`}
+                                  aria-label={`Title for Assessment ${assIdx + 1}`}
+                                  className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5 flex-1 min-w-[140px]"
+                                  placeholder="Assessment Title..."
                                 />
+                                {isAssessmentCollapsed && (
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-mono font-medium border border-slate-200">
+                                      {ass.criteria.length} Criteria
+                                    </span>
+                                    {ass.description && (
+                                      <span className="text-[10px] text-slate-400 italic truncate max-w-[200px] hidden sm:inline">
+                                        {ass.description}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono font-semibold">
-                                  <span>Weight:</span>
-                                  <input
-                                    type="number"
-                                    value={c.weight}
-                                    onChange={(e) => {
-                                      const updated = [...course.units];
-                                      updated[activeUnitIndex].assessments[assIdx].criteria[critIdx].weight = parseInt(e.target.value) || 0;
-                                      setCourse({ ...course, units: updated });
-                                    }}
-                                    data-agent-id={`course-builder-criterion-weight-input-${c.id || critIdx}`}
-                                    data-testid={`course-builder-criterion-weight-${c.id || critIdx}`}
-                                    aria-label={`Weight for Criterion ${c.name}`}
-                                    className="w-10 px-1 py-0.5 text-[10px] font-mono border border-slate-200 rounded text-center outline-none focus:border-indigo-600 bg-white"
-                                  />
-                                  <span>%</span>
-                                </div>
-
-                                {deletingCriterionId === (c.id || `${ass.id}-${critIdx}`) ? (
+                              {/* Assessment Deletion with Two-step Confirmation */}
+                              <div className="shrink-0 flex items-center">
+                                {deletingAssessmentId === ass.id ? (
                                   <div className="flex items-center gap-1 animate-in fade-in duration-200">
                                     <button
                                       type="button"
-                                      onClick={() => handleDeleteCriterion(assIdx, critIdx)}
-                                      data-agent-id={`course-builder-confirm-delete-criterion-${c.id || critIdx}-btn`}
-                                      data-testid={`confirm-delete-criterion-${c.id || critIdx}`}
-                                      aria-label={`Confirm Delete Criterion ${c.name}`}
-                                      className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-0.5"
+                                      onClick={() => handleDeleteAssessment(assIdx)}
+                                      data-agent-id={`course-builder-confirm-delete-assessment-${ass.id}-btn`}
+                                      data-testid={`confirm-delete-assessment-${ass.id}`}
+                                      aria-label={`Confirm Delete Assessment ${ass.title}`}
+                                      className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
                                     >
-                                      <Trash2 className="w-2.5 h-2.5" /> Confirm
+                                      <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setDeletingCriterionId(null)}
-                                      data-agent-id={`course-builder-cancel-delete-criterion-${c.id || critIdx}-btn`}
-                                      data-testid={`cancel-delete-criterion-${c.id || critIdx}`}
-                                      aria-label="Cancel delete criterion"
-                                      className="px-1 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-[9px]"
+                                      onClick={() => setDeletingAssessmentId(null)}
+                                      data-agent-id={`course-builder-cancel-delete-assessment-${ass.id}-btn`}
+                                      data-testid={`cancel-delete-assessment-${ass.id}`}
+                                      aria-label="Cancel delete assessment"
+                                      className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium transition-colors"
                                     >
                                       Cancel
                                     </button>
@@ -1531,73 +1791,224 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                 ) : (
                                   <button
                                     type="button"
-                                    onClick={() => setDeletingCriterionId(c.id || `${ass.id}-${critIdx}`)}
-                                    data-agent-id={`course-builder-delete-criterion-${c.id || critIdx}-btn`}
-                                    data-testid={`delete-criterion-${c.id || critIdx}`}
-                                    aria-label={`Delete Criterion ${c.name}`}
+                                    onClick={() => setDeletingAssessmentId(ass.id)}
+                                    data-agent-id={`course-builder-delete-assessment-${ass.id}-btn`}
+                                    data-testid={`delete-assessment-${ass.id}`}
+                                    aria-label={`Delete Assessment ${ass.title}`}
                                     className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                                    title="Delete Criterion"
+                                    title="Delete Assessment"
                                   >
-                                    <Trash2 className="w-3 h-3" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
                               </div>
                             </div>
 
-                            {/* 5 Rubric Levels Grid */}
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-2 pt-1">
-                              {(c.levels || createDefaultRubricLevels(c.name)).map((lvl, lIndex) => {
-                                const levelColors = [
-                                  { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800', badge: 'bg-rose-100 text-rose-900 border-rose-300', label: 'NYC / Novice (0–49%)' },
-                                  { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Developing (50–64%)' },
-                                  { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800', badge: 'bg-emerald-100 text-emerald-900 border-emerald-300', label: 'Competent (65–74%)' },
-                                  { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', badge: 'bg-sky-100 text-sky-900 border-sky-300', label: 'Advanced (75–84%)' },
-                                  { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', badge: 'bg-purple-100 text-purple-900 border-purple-300', label: 'Exemplary (85–100%)' }
-                                ];
-                                const style = levelColors[lIndex] || levelColors[0];
+                            {/* Assessment Body (Collapsible) */}
+                            {!isAssessmentCollapsed && (
+                              <div className="space-y-3 pt-1">
+                                {/* Assessment Description */}
+                                <textarea
+                                  rows={2}
+                                  value={ass.description}
+                                  onChange={(e) => {
+                                    const updated = [...course.units];
+                                    updated[activeUnitIndex].assessments[assIdx].description = e.target.value;
+                                    setCourse({ ...course, units: updated });
+                                  }}
+                                  data-agent-id={`course-builder-assessment-description-input-${ass.id}`}
+                                  data-testid={`course-builder-assessment-description-${ass.id}`}
+                                  aria-label={`Description for ${ass.title}`}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-indigo-600 focus:bg-white transition-colors"
+                                  placeholder="Assessment instructions, scope, evidence submission criteria..."
+                                />
 
-                                return (
-                                  <div
-                                    key={lIndex}
-                                    className={`p-2 rounded-lg border ${style.bg} ${style.border} space-y-1`}
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <span className={`text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded border ${style.badge}`}>
-                                        Level {lvl.level || (lIndex + 1)}
-                                      </span>
-                                    </div>
-                                    <div className={`text-[9px] font-bold ${style.text}`}>
-                                      {style.label}
-                                    </div>
-                                    <textarea
-                                      rows={4}
-                                      value={lvl.descriptor}
-                                      onChange={(e) => {
-                                        const updated = [...course.units];
-                                        const targetCrit = updated[activeUnitIndex].assessments[assIdx].criteria[critIdx];
-                                        if (!targetCrit.levels) {
-                                          targetCrit.levels = createDefaultRubricLevels(targetCrit.name);
-                                        }
-                                        targetCrit.levels[lIndex].descriptor = e.target.value;
-                                        if (lIndex === 2) targetCrit.competentDescriptor = e.target.value;
-                                        if (lIndex === 0) targetCrit.notYetCompetentDescriptor = e.target.value;
-                                        setCourse({ ...course, units: updated });
-                                      }}
-                                      data-agent-id={`course-builder-rubric-level-${ass.id}-${critIdx}-${lIndex}`}
-                                      data-testid={`rubric-level-${ass.id}-${critIdx}-${lIndex}`}
-                                      aria-label={`Descriptor for Level ${lIndex + 1} of ${c.name}`}
-                                      className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded p-1.5 text-[10px] text-slate-800 outline-none leading-tight resize-y font-sans"
-                                      placeholder={`Explain how to think about Level ${lIndex + 1} score...`}
-                                    />
+                                {/* Criteria & 5-Level Rubrics */}
+                                <div className="space-y-3 pt-2">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                      Performance Criteria & 5-Level Rubrics
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddCriterion(assIdx)}
+                                      data-agent-id={`course-builder-add-criterion-${ass.id}-btn`}
+                                      data-testid={`add-criterion-${ass.id}`}
+                                      aria-label={`Add Criterion to Assessment ${ass.title}`}
+                                      className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[10px] text-indigo-700 font-bold hover:bg-indigo-100 flex items-center gap-1 transition-colors"
+                                    >
+                                      <Plus className="w-3 h-3 text-indigo-600" /> + Add Criterion
+                                    </button>
                                   </div>
-                                );
-                              })}
-                            </div>
+
+                                  {ass.criteria.map((c, critIdx) => {
+                                    const critKey = c.id || `${ass.id}-${critIdx}`;
+                                    const isCriterionCollapsed = !!collapsedCriterionIds[critKey];
+                                    return (
+                                      <div key={critKey} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
+                                        {/* Criterion Header */}
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleCriterionCollapse(critKey)}
+                                              data-agent-id={`course-builder-toggle-criterion-${critKey}-btn`}
+                                              data-testid={`toggle-criterion-${critKey}`}
+                                              aria-label={`Toggle Criterion ${c.name}`}
+                                              aria-expanded={!isCriterionCollapsed}
+                                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-200 rounded transition-colors"
+                                              title={isCriterionCollapsed ? 'Expand Rubric' : 'Collapse Rubric'}
+                                            >
+                                              {isCriterionCollapsed ? (
+                                                <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
+                                              ) : (
+                                                <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
+                                              )}
+                                            </button>
+                                            <span className="w-4 h-4 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-mono text-[9px] font-bold shrink-0">
+                                              {critIdx + 1}
+                                            </span>
+                                            <input
+                                              type="text"
+                                              value={c.name}
+                                              onChange={(e) => {
+                                                const updated = [...course.units];
+                                                updated[activeUnitIndex].assessments[assIdx].criteria[critIdx].name = e.target.value;
+                                                setCourse({ ...course, units: updated });
+                                              }}
+                                              data-agent-id={`course-builder-criterion-name-input-${critKey}`}
+                                              data-testid={`course-builder-criterion-name-${critKey}`}
+                                              aria-label={`Name for Criterion ${critIdx + 1}`}
+                                              className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-800 outline-none px-1 py-0.5 flex-1 min-w-[120px]"
+                                              placeholder="Criterion Name..."
+                                            />
+                                            {isCriterionCollapsed && (
+                                              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                                5-Level Rubric
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono font-semibold">
+                                              <span>Weight:</span>
+                                              <input
+                                                type="number"
+                                                value={c.weight}
+                                                onChange={(e) => {
+                                                  const updated = [...course.units];
+                                                  updated[activeUnitIndex].assessments[assIdx].criteria[critIdx].weight = parseInt(e.target.value) || 0;
+                                                  setCourse({ ...course, units: updated });
+                                                }}
+                                                data-agent-id={`course-builder-criterion-weight-input-${critKey}`}
+                                                data-testid={`course-builder-criterion-weight-${critKey}`}
+                                                aria-label={`Weight for Criterion ${c.name}`}
+                                                className="w-10 px-1 py-0.5 text-[10px] font-mono border border-slate-200 rounded text-center outline-none focus:border-indigo-600 bg-white"
+                                              />
+                                              <span>%</span>
+                                            </div>
+
+                                            {deletingCriterionId === critKey ? (
+                                              <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleDeleteCriterion(assIdx, critIdx)}
+                                                  data-agent-id={`course-builder-confirm-delete-criterion-${critKey}-btn`}
+                                                  data-testid={`confirm-delete-criterion-${critKey}`}
+                                                  aria-label={`Confirm Delete Criterion ${c.name}`}
+                                                  className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-0.5"
+                                                >
+                                                  <Trash2 className="w-2.5 h-2.5" /> Confirm
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setDeletingCriterionId(null)}
+                                                  data-agent-id={`course-builder-cancel-delete-criterion-${critKey}-btn`}
+                                                  data-testid={`cancel-delete-criterion-${critKey}`}
+                                                  aria-label="Cancel delete criterion"
+                                                  className="px-1 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-[9px]"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                onClick={() => setDeletingCriterionId(critKey)}
+                                                data-agent-id={`course-builder-delete-criterion-${critKey}-btn`}
+                                                data-testid={`delete-criterion-${critKey}`}
+                                                aria-label={`Delete Criterion ${c.name}`}
+                                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                                title="Delete Criterion"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* 5 Rubric Levels Grid (Collapsible) */}
+                                        {!isCriterionCollapsed && (
+                                          <div className="grid grid-cols-1 md:grid-cols-5 gap-2 pt-1">
+                                            {(c.levels || createDefaultRubricLevels(c.name)).map((lvl, lIndex) => {
+                                              const levelColors = [
+                                                { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800', badge: 'bg-rose-100 text-rose-900 border-rose-300', label: 'NYC / Novice (0–49%)' },
+                                                { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', badge: 'bg-amber-100 text-amber-900 border-amber-300', label: 'Developing (50–64%)' },
+                                                { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800', badge: 'bg-emerald-100 text-emerald-900 border-emerald-300', label: 'Competent (65–74%)' },
+                                                { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', badge: 'bg-sky-100 text-sky-900 border-sky-300', label: 'Advanced (75–84%)' },
+                                                { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-800', badge: 'bg-purple-100 text-purple-900 border-purple-300', label: 'Exemplary (85–100%)' }
+                                              ];
+                                              const style = levelColors[lIndex] || levelColors[0];
+
+                                              return (
+                                                <div
+                                                  key={lIndex}
+                                                  className={`p-2 rounded-lg border ${style.bg} ${style.border} space-y-1`}
+                                                >
+                                                  <div className="flex items-center justify-between">
+                                                    <span className={`text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded border ${style.badge}`}>
+                                                      Level {lvl.level || (lIndex + 1)}
+                                                    </span>
+                                                  </div>
+                                                  <div className={`text-[9px] font-bold ${style.text}`}>
+                                                    {style.label}
+                                                  </div>
+                                                  <textarea
+                                                    rows={4}
+                                                    value={lvl.descriptor}
+                                                    onChange={(e) => {
+                                                      const updated = [...course.units];
+                                                      const targetCrit = updated[activeUnitIndex].assessments[assIdx].criteria[critIdx];
+                                                      if (!targetCrit.levels) {
+                                                        targetCrit.levels = createDefaultRubricLevels(targetCrit.name);
+                                                      }
+                                                      targetCrit.levels[lIndex].descriptor = e.target.value;
+                                                      if (lIndex === 2) targetCrit.competentDescriptor = e.target.value;
+                                                      if (lIndex === 0) targetCrit.notYetCompetentDescriptor = e.target.value;
+                                                      setCourse({ ...course, units: updated });
+                                                    }}
+                                                    data-agent-id={`course-builder-rubric-level-${ass.id}-${critIdx}-${lIndex}`}
+                                                    data-testid={`rubric-level-${ass.id}-${critIdx}-${lIndex}`}
+                                                    aria-label={`Descriptor for Level ${lIndex + 1} of ${c.name}`}
+                                                    className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded p-1.5 text-[10px] text-slate-800 outline-none leading-tight resize-y font-sans"
+                                                    placeholder={`Explain how to think about Level ${lIndex + 1} score...`}
+                                                  />
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))
+                        );
+                      })
+                    )}
+                  </>
                 )}
               </div>
 
