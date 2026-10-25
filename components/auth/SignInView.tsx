@@ -1,0 +1,443 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+  ShieldCheck,
+  CheckCircle2,
+  Calendar,
+  BookOpen,
+  Sparkles,
+  ArrowRight,
+  LogOut,
+  User,
+  GraduationCap,
+  Layers,
+  Lock,
+  Mail,
+  AlertCircle,
+  Zap,
+  RefreshCw
+} from 'lucide-react';
+import { ClassroomUser } from '@/components/auth/GoogleClassroomLoginModal';
+import { trackClientEvent } from '@/lib/firebase/telemetry';
+import { getRoleMeta, isProjectOwnerEmail } from '@/lib/auth/roles';
+
+interface SignInViewProps {
+  currentUser: ClassroomUser | null;
+  onLoginSuccess: (user: ClassroomUser) => void;
+  onLogout: () => void;
+  onNavigateTab: (tab: any) => void;
+}
+
+export const SignInView: React.FC<SignInViewProps> = ({
+  currentUser,
+  onLoginSuccess,
+  onLogout,
+  onNavigateTab
+}) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isElevating, setIsElevating] = useState(false);
+  const [elevationMessage, setElevationMessage] = useState('');
+
+  const handleRefreshRole = async () => {
+    if (!currentUser) return;
+    setIsElevating(true);
+    setElevationMessage('');
+    setErrorMessage('');
+    try {
+      const isOwner = isProjectOwnerEmail(currentUser.email);
+      const query = currentUser.email 
+        ? `email=${encodeURIComponent(currentUser.email)}`
+        : (currentUser.googleWorkspaceId ? `uid=${encodeURIComponent(currentUser.googleWorkspaceId)}` : '');
+      const res = await fetch(`/api/users?${query}`);
+      const data = await res.json();
+      if (res.ok && data.user) {
+        const role = isOwner ? 'superadmin' : (data.user.role || 'supporter');
+        const isSuper = isOwner || data.user.isSuperAdmin === true || role.toLowerCase() === 'superadmin';
+        const updated: ClassroomUser = {
+          ...currentUser,
+          role,
+          isSuperAdmin: isSuper,
+        };
+        onLoginSuccess(updated);
+        try {
+          localStorage.setItem('edupulse_user', JSON.stringify(updated));
+          localStorage.setItem('edupulse_is_admin', isSuper ? 'true' : 'false');
+        } catch (e) {}
+        setElevationMessage(`Live role synced from Firebase: ${role.toUpperCase()}`);
+        if (isSuper) {
+          setTimeout(() => onNavigateTab('admin'), 600);
+        }
+      } else {
+        setErrorMessage('Could not fetch user record from Firebase');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to sync role');
+    } finally {
+      setIsElevating(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const { auth } = await import('@/lib/firebase/client');
+      const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
+
+      const provider = new GoogleAuthProvider();
+      
+      // Google Ecosystem Scopes for Superadmin Access
+      provider.addScope('https://www.googleapis.com/auth/userinfo.email');
+      provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
+      provider.addScope('https://www.googleapis.com/auth/classroom.courses');
+      provider.addScope('https://www.googleapis.com/auth/classroom.rosters');
+      provider.addScope('https://www.googleapis.com/auth/calendar.events');
+      provider.addScope('https://www.googleapis.com/auth/spreadsheets.readonly');
+
+      provider.setCustomParameters({
+        prompt: 'select_account',
+      });
+
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const accessToken = credential?.accessToken;
+
+      if (accessToken && typeof window !== 'undefined') {
+        sessionStorage.setItem('google_oauth_access_token', accessToken);
+        console.log('[Auth] Google OAuth Token saved in sessionStorage');
+      }
+
+      // Sync user profile with Firestore database (/api/users)
+      let finalRole = 'supporter';
+      let isSuper = false;
+      try {
+        const idToken = await result.user.getIdToken();
+        const syncRes = await fetch('/api/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            displayName: result.user.displayName,
+            photoURL: result.user.photoURL,
+          }),
+        });
+        if (syncRes.ok) {
+          const syncData = await syncRes.json();
+          if (syncData.user) {
+            const isOwner = isProjectOwnerEmail(result.user.email);
+            finalRole = isOwner ? 'superadmin' : (syncData.user.role || 'supporter');
+            isSuper = isOwner || syncData.user.isSuperAdmin === true || finalRole.toLowerCase() === 'superadmin';
+          }
+        }
+      } catch (syncErr) {
+        console.warn('[Auth] Could not sync user profile with /api/users:', syncErr);
+      }
+
+      const authenticatedUser: ClassroomUser = {
+        name: result.user.displayName || 'User',
+        email: result.user.email || '',
+        role: finalRole,
+        isSuperAdmin: isSuper,
+        avatarUrl: result.user.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+        googleWorkspaceId: result.user.uid,
+        scopesGranted: [
+          'userinfo.email',
+          'userinfo.profile',
+          'classroom.courses',
+          'classroom.rosters',
+          'calendar.events',
+          'spreadsheets.readonly'
+        ]
+      };
+
+      // Telemetry log
+      trackClientEvent({
+        category: 'AUTH',
+        action: isSuper ? 'GOOGLE_SSO_SUPERADMIN_SUCCESS' : 'GOOGLE_SSO_SUPPORTER_SUCCESS',
+        userId: authenticatedUser.googleWorkspaceId,
+        userEmail: authenticatedUser.email,
+        userRole: finalRole,
+        metadata: {
+          provider: 'google.com',
+          displayName: authenticatedUser.name,
+          role: finalRole,
+        }
+      });
+
+      onLoginSuccess(authenticatedUser);
+    } catch (err: any) {
+      console.error('[Google SSO Error]', err);
+      setErrorMessage(err.message || 'Google sign in was cancelled or failed.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignOut = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('google_oauth_access_token');
+        sessionStorage.clear();
+      }
+    } catch {}
+    onLogout();
+
+    (async () => {
+      try {
+        const { auth } = await import('@/lib/firebase/client');
+        const { signOut } = await import('firebase/auth');
+        if (auth && typeof auth === 'object' && auth.name) {
+          await Promise.race([
+            signOut(auth),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Sign out timeout')), 2500))
+          ]);
+        }
+
+        trackClientEvent({
+          category: 'AUTH',
+          action: 'USER_SIGNOUT',
+          userEmail: currentUser?.email
+        });
+      } catch (e) {
+        console.warn('Sign out warning:', e);
+      }
+    })();
+  };
+
+  return (
+    <div className="w-full space-y-6">
+      {/* 1. HERO HEADER */}
+      <div className="bg-[#0f172a] rounded-3xl p-6 sm:p-10 text-white shadow-xl border border-slate-800">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full text-xs font-semibold uppercase tracking-wider">
+            Centralized Identity
+          </span>
+          <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 rounded-full text-xs font-semibold">
+            Google Authentication
+          </span>
+        </div>
+        <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+          {currentUser
+            ? `${getRoleMeta(currentUser.role).label} Account Active`
+            : 'Sign In / Register with Google'}
+        </h1>
+        <p className="text-sm text-slate-300 mt-2 max-w-2xl leading-relaxed">
+          {currentUser
+            ? ((currentUser.role || '').toLowerCase() === 'superadmin' || currentUser.isSuperAdmin)
+              ? 'Your Google account is verified with complete Superadmin privileges across EduPulse AI.'
+              : `You are signed in with the ${getRoleMeta(currentUser.role).label} role (${getRoleMeta(currentUser.role).description}). Full administrative control is reserved for Superadmins.`
+            : 'Authenticate securely using your Google account. All first-time registrations strictly receive the Supporter role only. Full administrative control is reserved exclusively for accounts designated as Superadmin in the database.'}
+        </p>
+      </div>
+
+      {/* 2. AUTHENTICATED STATE */}
+      {currentUser ? (
+        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-100 shadow-sm space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-6 bg-slate-50 rounded-2xl border border-slate-200/80">
+            <div className="flex items-center gap-4">
+              <img
+                src={currentUser.avatarUrl}
+                alt={currentUser.name}
+                className="w-16 h-16 rounded-2xl object-cover ring-4 ring-indigo-500/20 shadow-md"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-slate-900">{currentUser.name}</h2>
+                  <span className="p-0.5 bg-emerald-100 text-emerald-700 rounded-full" title="Verified Account">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </span>
+                </div>
+                <p className="text-xs font-mono text-slate-500 mt-0.5">{currentUser.email}</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`px-2.5 py-0.5 text-white text-[11px] font-black rounded-lg uppercase tracking-wide ${getRoleMeta(currentUser.role).badgeBg}`}>
+                    {getRoleMeta(currentUser.role).label}
+                  </span>
+                  <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-semibold rounded-lg flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Google SSO Connected
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {((currentUser.role || '').toLowerCase() === 'superadmin' || currentUser.isSuperAdmin) ? (
+                <>
+                  <button
+                    onClick={() => onNavigateTab('admin')}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shadow-md shadow-indigo-200 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Go to Admin Panel</span>
+                  </button>
+                  <button
+                    onClick={handleRefreshRole}
+                    disabled={isElevating}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 border border-slate-300 cursor-pointer"
+                    title="Verify live role claims from Firestore"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isElevating ? 'animate-spin' : ''}`} />
+                    <span>{isElevating ? 'Syncing...' : 'Sync Role'}</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="px-4 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold">
+                    Admin Panel requires Superadmin authorization
+                  </div>
+                  <button
+                    onClick={handleRefreshRole}
+                    disabled={isElevating}
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 border border-slate-300 cursor-pointer"
+                    title="Check live assigned role from Firebase"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isElevating ? 'animate-spin' : ''}`} />
+                    <span>{isElevating ? 'Checking...' : 'Check Assigned Role'}</span>
+                  </button>
+                </>
+              )}
+              <button
+                onClick={handleSignOut}
+                className="px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 border border-rose-200/60 cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+
+          {elevationMessage && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs flex items-center gap-2.5 shadow-sm">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="font-semibold">{elevationMessage}</span>
+            </div>
+          )}
+
+          {/* Quick Shortcuts */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {((currentUser.role || '').toLowerCase() === 'superadmin' || currentUser.isSuperAdmin) && (
+              <div
+                onClick={() => onNavigateTab('admin')}
+                className="p-5 bg-white rounded-2xl border-2 border-indigo-200 hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-sm">Admin Panel</h3>
+                <p className="text-xs text-slate-500 mt-1">Full control over courses, telemetry, sheets sync, and staff tools.</p>
+                <span className="text-xs font-bold text-indigo-600 flex items-center gap-1 mt-3">
+                  Open Admin Panel &rarr;
+                </span>
+              </div>
+            )}
+
+            <div
+              onClick={() => onNavigateTab('application')}
+              className="p-5 bg-white rounded-2xl border border-slate-200/80 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-slate-900 text-sm">Admissions Application</h3>
+              <p className="text-xs text-slate-500 mt-1">Review student applications, entry criteria, and status.</p>
+              <span className="text-xs font-bold text-indigo-600 flex items-center gap-1 mt-3">
+                Open Applications &rarr;
+              </span>
+            </div>
+
+            <div
+              onClick={() => onNavigateTab('events')}
+              className="p-5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 hover:shadow-md transition-all cursor-pointer group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <h3 className="font-bold text-slate-900 text-sm">Events & Calendar</h3>
+              <p className="text-xs text-slate-500 mt-1">Manage campus tours, open days, and calendar bookings.</p>
+              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 mt-3">
+                View Schedule &rarr;
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 3. GOOGLE ONLY SIGN IN FORM */
+        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-100 shadow-sm max-w-lg mx-auto space-y-6 text-center">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-xs">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900">Sign In with Google</h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-sm mx-auto">
+              Sign in securely. When you first register, you strictly receive role = supporter only.
+            </p>
+          </div>
+
+          {errorMessage && (
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex items-center gap-2 text-left">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Registration & RBAC Policy */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-left space-y-2.5 text-xs text-slate-600">
+            <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+              Registration &amp; Access Policy:
+            </span>
+            <div className="flex items-center gap-2 text-slate-700">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Strict Rule: All new registrants receive role = supporter only</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-700">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Only database users with role = superadmin receive Superadmin RBAC</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-700">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Google SSO with strict Cloud Firestore RBAC synchronization</span>
+            </div>
+          </div>
+
+          {/* Official Google Button */}
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
+            className="w-full py-4 px-6 bg-white hover:bg-slate-50 border-2 border-slate-300 hover:border-slate-400 text-slate-800 font-bold rounded-2xl text-sm transition-all shadow-sm flex items-center justify-center gap-3 active:scale-98 disabled:opacity-50 cursor-pointer"
+          >
+            {/* Google SVG Logo */}
+            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+              <path
+                fill="#4285F4"
+                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              />
+              <path
+                fill="#34A853"
+                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              />
+              <path
+                fill="#FBBC05"
+                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+              />
+              <path
+                fill="#EA4335"
+                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+              />
+            </svg>
+            <span>{isLoading ? 'Connecting with Google...' : 'Sign In with Google'}</span>
+          </button>
+
+          <p className="text-[11px] text-slate-400">
+            Centralized Google Authentication — Seamless Admin Access
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
