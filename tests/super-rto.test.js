@@ -58,6 +58,17 @@ import {
   createPerformanceCriterion
 } from '../lib/courseBuilder/units.ts';
 
+// 6. Program Admissions & Tertiary Profile Tests
+import {
+  DEFAULT_CAMPUSES,
+  DEFAULT_INTAKES,
+  createDefaultAdmissionsProfile,
+  convertAtarToInternationalScores,
+  formatAud,
+  calculateAnnualTuition,
+  calculateTotalTuition
+} from '../lib/courseBuilder/admissions.ts';
+
 describe('Super-RTO Unified Platform Test Suite', () => {
 
   describe('Unified RBAC & Director Role Verification', () => {
@@ -556,7 +567,124 @@ describe('Super-RTO Unified Platform Test Suite', () => {
     });
   });
 
+  describe('Program Admissions, Delivery & Tuition Profile Panel Verification', () => {
+    it('should create default admissions profile with all 7 core pillars populated', () => {
+      const profile = createDefaultAdmissionsProfile('CS100', 'Bachelor of Computer Science', 7);
+
+      assert.strictEqual(profile.studentType, 'domestic');
+      assert.strictEqual(profile.durationYears, 3.0);
+      assert.strictEqual(profile.partTimeYears, 6.0);
+      assert.strictEqual(profile.acceleratedYears, 2.0);
+      assert.strictEqual(profile.domesticFundingType, 'csp');
+      assert.strictEqual(profile.annualTuitionDomestic, 9850);
+      assert.strictEqual(profile.annualTuitionInternational, 35600);
+      assert.strictEqual(profile.entryThresholds.atar, 72.0);
+      assert.ok(profile.campuses.length >= 3);
+      assert.ok(profile.intakes.length >= 2);
+      assert.ok(profile.admissionsCodes.cricosCode);
+      assert.ok(profile.admissionsCodes.directCode);
+    });
+
+    it('should convert ATAR entry thresholds into international ranking standards', () => {
+      // Benchmark at ATAR 70
+      const scores70 = convertAtarToInternationalScores(70);
+      assert.strictEqual(scores70.gpa, 3.0);
+      assert.strictEqual(scores70.sat, 1150);
+      assert.strictEqual(scores70.act, 23);
+      assert.strictEqual(scores70.aLevels, 'BBC');
+      assert.strictEqual(scores70.ucasPoints, 112);
+      assert.strictEqual(scores70.ibPoints, 28);
+
+      // High academic benchmark at ATAR 90
+      const scores90 = convertAtarToInternationalScores(90);
+      assert.strictEqual(scores90.gpa, 3.7);
+      assert.strictEqual(scores90.sat, 1380);
+      assert.strictEqual(scores90.act, 30);
+      assert.strictEqual(scores90.aLevels, 'A*AA');
+      assert.strictEqual(scores90.ucasPoints, 152);
+      assert.strictEqual(scores90.ibPoints, 34);
+    });
+
+    it('should compute indicative annual and total tuition dynamically for domestic vs international', () => {
+      const profile = createDefaultAdmissionsProfile('HE-BCS', 'Bachelor of Computer Science', 7);
+
+      const annualDom = calculateAnnualTuition(profile, 'domestic');
+      const totalDom = calculateTotalTuition(profile, 'domestic');
+      assert.strictEqual(annualDom, 9850);
+      assert.strictEqual(totalDom, 9850 * 3); // 29,550 AUD
+
+      const annualInt = calculateAnnualTuition(profile, 'international');
+      const totalInt = calculateTotalTuition(profile, 'international');
+      assert.strictEqual(annualInt, 35600);
+      assert.strictEqual(totalInt, 35600 * 3); // 106,800 AUD
+
+      assert.strictEqual(formatAud(annualDom), '$9,850 AUD');
+      assert.strictEqual(formatAud(totalInt), '$106,800 AUD');
+    });
+
+    it('should verify ProgramAdmissionsPanel contains all 7 user-requested controls', () => {
+      const panelPath = path.resolve('components/courseBuilder/ProgramAdmissionsPanel.tsx');
+      const panelContent = fs.readFileSync(panelPath, 'utf8');
+
+      // 1. Student Type Selector
+      assert.ok(panelContent.includes('data-testid="student-type-domestic-btn"'), 'Must have domestic student button');
+      assert.ok(panelContent.includes('data-testid="student-type-international-btn"'), 'Must have international student button');
+      assert.ok(panelContent.includes('data-testid="select-domestic-mode-btn"'), 'Must have select domestic mode button');
+      assert.ok(panelContent.includes('data-testid="select-international-mode-btn"'), 'Must have select international mode button');
+
+      // 2. Campus & Delivery Mode (Location)
+      assert.ok(panelContent.includes('data-testid="panel-campus-delivery"'), 'Must have Campus & Delivery Mode section');
+      assert.ok(panelContent.includes('data-testid="campus-select"'), 'Must have campus selector');
+      assert.ok(panelContent.includes('data-testid="delivery-mode-on-campus-btn"'), 'Must have on-campus button');
+      assert.ok(panelContent.includes('data-testid="delivery-mode-hybrid-btn"'), 'Must have hybrid button');
+      assert.ok(panelContent.includes('data-testid="delivery-mode-online-btn"'), 'Must have online button');
+
+      // 3. Entry Threshold (ATAR, GPA + SAT/ACT, A-Levels, UCAS, IB)
+      assert.ok(panelContent.includes('data-testid="panel-entry-threshold"'), 'Must have Entry Threshold section');
+      assert.ok(panelContent.includes('data-testid="entry-threshold-atar-input"'), 'Must have ATAR input');
+      assert.ok(panelContent.includes('GPA + SAT / ACT'), 'Must display GPA + SAT/ACT');
+      assert.ok(panelContent.includes('GCE A-Levels'), 'Must display GCE A-Levels');
+      assert.ok(panelContent.includes('UCAS Tariff'), 'Must display UCAS Tariff');
+      assert.ok(panelContent.includes('IB Diploma'), 'Must display IB Diploma');
+
+      // 4. Duration
+      assert.ok(panelContent.includes('data-testid="panel-duration"'), 'Must have Program Duration section');
+      assert.ok(panelContent.includes('data-testid="duration-years-input"'), 'Must have duration input');
+      assert.ok(panelContent.includes('Part-Time Equivalent:'), 'Must show part-time equivalency');
+
+      // 5. Indicative Fees & Funding Type
+      assert.ok(panelContent.includes('data-testid="panel-fees-funding"'), 'Must have Fees & Funding section');
+      assert.ok(panelContent.includes('data-testid="annual-tuition-input"'), 'Must have annual tuition input');
+      assert.ok(panelContent.includes('Commonwealth Supported Place (CSP)'), 'Must support CSP');
+      assert.ok(panelContent.includes('Total Estimated Program Fee:'), 'Must show total estimated fee');
+
+      // 6. Admissions Code
+      assert.ok(panelContent.includes('data-testid="panel-admissions-code"'), 'Must have Admissions Code section');
+      assert.ok(panelContent.includes('data-testid="copy-direct-code-btn"'), 'Must have copy direct code button');
+      assert.ok(panelContent.includes('data-testid="copy-cricos-code-btn"'), 'Must have copy CRICOS code button');
+
+      // 7. Intake / Start Period
+      assert.ok(panelContent.includes('data-testid="panel-intake-period"'), 'Must have Intake Period section');
+      assert.ok(panelContent.includes('data-testid="intake-select"'), 'Must have intake select dropdown');
+    });
+
+    it('should verify UnifiedCourseBuilder embeds ProgramAdmissionsPanel in the layout', () => {
+      const builderPath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const builderContent = fs.readFileSync(builderPath, 'utf8');
+
+      assert.ok(
+        builderContent.includes('<ProgramAdmissionsPanel'),
+        'UnifiedCourseBuilder must embed ProgramAdmissionsPanel'
+      );
+      assert.ok(
+        builderContent.includes('admissionsProfile: createDefaultAdmissionsProfile'),
+        'UnifiedCourseBuilder must initialize admissionsProfile in DEFAULT_COURSE'
+      );
+    });
+  });
+
 });
+
 
 
 

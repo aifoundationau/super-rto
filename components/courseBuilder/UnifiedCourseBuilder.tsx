@@ -81,8 +81,20 @@ import {
   createDefaultPerformanceCriteria,
   createPerformanceCriterion
 } from '@/lib/courseBuilder/units';
+import {
+  ProgramAdmissionsProfile,
+  createDefaultAdmissionsProfile
+} from '@/lib/courseBuilder/admissions';
+import { ProgramAdmissionsPanel } from './ProgramAdmissionsPanel';
 
-export type { RubricLevel, AssessmentCriterion, CourseAssessment, UnitPerformanceCriterion, AssessmentSortOption };
+export type {
+  RubricLevel,
+  AssessmentCriterion,
+  CourseAssessment,
+  UnitPerformanceCriterion,
+  AssessmentSortOption,
+  ProgramAdmissionsProfile
+};
 export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine, sortAssessments, reorderAssessment };
 
 export interface CourseUnit {
@@ -110,6 +122,7 @@ export interface CourseData {
   aqfLevel: number;
   tokenCost: number;
   description: string;
+  admissionsProfile?: ProgramAdmissionsProfile;
   units: CourseUnit[];
 }
 
@@ -121,6 +134,11 @@ const DEFAULT_COURSE: CourseData = {
   aqfLevel: 4,
   tokenCost: 0,
   description: 'National qualification for occupational health and safety coordinators and compliance officers.',
+  admissionsProfile: createDefaultAdmissionsProfile(
+    'BSB41419',
+    'Certificate IV in Work Health and Safety',
+    4
+  ),
   units: [
     {
       id: 'unit-bsbwhs411',
@@ -293,6 +311,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   // Collapsible view state across all course builder layers
   const [isCourseMetaCollapsed, setIsCourseMetaCollapsed] = useState(false);
+  const [isAdmissionsPanelCollapsed, setIsAdmissionsPanelCollapsed] = useState(false);
   const [isPerformanceCriteriaCollapsed, setIsPerformanceCriteriaCollapsed] = useState(false);
   const [isUnitInfoCollapsed, setIsUnitInfoCollapsed] = useState(false);
   const [isLessonsSectionCollapsed, setIsLessonsSectionCollapsed] = useState(false);
@@ -320,6 +339,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const collapseAll = () => {
     setIsCourseMetaCollapsed(true);
+    setIsAdmissionsPanelCollapsed(true);
     setIsPerformanceCriteriaCollapsed(true);
     setIsUnitInfoCollapsed(true);
     setIsLessonsSectionCollapsed(false);
@@ -355,6 +375,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const expandAll = () => {
     setIsCourseMetaCollapsed(false);
+    setIsAdmissionsPanelCollapsed(false);
     setIsPerformanceCriteriaCollapsed(false);
     setIsUnitInfoCollapsed(false);
     setIsLessonsSectionCollapsed(false);
@@ -365,6 +386,17 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setCollapsedCriterionIds({});
     setStatusMessage('All sections, lessons, elements, and rubrics expanded.');
     setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const currentAdmissionsProfile =
+    course.admissionsProfile ||
+    createDefaultAdmissionsProfile(course.code, course.title, course.aqfLevel);
+
+  const handleUpdateAdmissionsProfile = (updatedProfile: ProgramAdmissionsProfile) => {
+    setCourse({
+      ...course,
+      admissionsProfile: updatedProfile
+    });
   };
 
   const activeUnit = course.units[activeUnitIndex] || course.units[0];
@@ -1064,6 +1096,15 @@ export const UnifiedCourseBuilder: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Program Admissions, Delivery & Tuition Profile Panel (One Comprehensive Panel) */}
+      <ProgramAdmissionsPanel
+        profile={currentAdmissionsProfile}
+        onChange={handleUpdateAdmissionsProfile}
+        isCollapsible={true}
+        isCollapsed={isAdmissionsPanelCollapsed}
+        onToggleCollapse={() => setIsAdmissionsPanelCollapsed(!isAdmissionsPanelCollapsed)}
+      />
 
       {/* Performance Criteria (Collapsible) - Positioned above Assessment */}
       <div
