@@ -22,6 +22,7 @@ import {
   Download,
   Upload,
   FileSpreadsheet,
+  Target,
   ChevronDown,
   ChevronUp,
   ChevronRight
@@ -68,9 +69,15 @@ import {
   exportAssessmentsToCsv,
   parseRubricsCsv
 } from '@/lib/courseBuilder/rubrics';
-import { createDefaultUnit, deleteUnitFromCourse } from '@/lib/courseBuilder/units';
+import {
+  createDefaultUnit,
+  deleteUnitFromCourse,
+  UnitPerformanceCriterion,
+  createDefaultPerformanceCriteria,
+  createPerformanceCriterion
+} from '@/lib/courseBuilder/units';
 
-export type { RubricLevel, AssessmentCriterion, CourseAssessment };
+export type { RubricLevel, AssessmentCriterion, CourseAssessment, UnitPerformanceCriterion };
 export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine };
 
 export interface CourseUnit {
@@ -79,6 +86,7 @@ export interface CourseUnit {
   unitTitle: string;
   nominalHours: number;
   description: string;
+  performanceCriteria?: UnitPerformanceCriterion[];
   lessons: {
     id: string;
     title: string;
@@ -115,6 +123,32 @@ const DEFAULT_COURSE: CourseData = {
       unitTitle: 'Implement and monitor WHS policies, procedures and programs',
       nominalHours: 40,
       description: 'Covers practical skills to facilitate statutory compliance and consultative arrangements in an Australian workplace.',
+      performanceCriteria: [
+        {
+          id: 'pc-whs-1-1',
+          element: 'Element 1: Establish and maintain consultative arrangements',
+          code: '1.1',
+          title: 'Identify and interpret statutory WHS obligations and relevant compliance standards',
+          description:
+            'Accurately identify and access applicable national and state/territory statutory requirements, codes of practice, and guidance notes relevant to organizational operations.'
+        },
+        {
+          id: 'pc-whs-1-2',
+          element: 'Element 1: Establish and maintain consultative arrangements',
+          code: '1.2',
+          title: 'Facilitate participative workplace consultations with stakeholders',
+          description:
+            'Engage designated health and safety representatives, worker committees, and operational managers in constructive consultation regarding hazard identification and risk control.'
+        },
+        {
+          id: 'pc-whs-2-1',
+          element: 'Element 2: Implement hazard identification and risk assessment procedures',
+          code: '2.1',
+          title: 'Conduct structured hazard identification and risk assessments',
+          description:
+            'Systematically identify workplace hazards, assess associated likelihood and severity, and prioritize corrective measures in accordance with the hierarchy of controls.'
+        }
+      ],
       lessons: [
         {
           id: 'les-1',
@@ -240,6 +274,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
   const [deletingAssessmentId, setDeletingAssessmentId] = useState<string | null>(null);
   const [deletingCriterionId, setDeletingCriterionId] = useState<string | null>(null);
+  const [deletingUnitCriterionId, setDeletingUnitCriterionId] = useState<string | null>(null);
   const [deletingUnitId, setDeletingUnitId] = useState<string | null>(null);
   const [selectedAssessmentCategory, setSelectedAssessmentCategory] = useState<
     'summative_exam' | 'formative_exam' | 'formative' | 'summative'
@@ -248,6 +283,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   // Collapsible view state across all course builder layers
   const [isCourseMetaCollapsed, setIsCourseMetaCollapsed] = useState(false);
+  const [isPerformanceCriteriaCollapsed, setIsPerformanceCriteriaCollapsed] = useState(false);
   const [isUnitInfoCollapsed, setIsUnitInfoCollapsed] = useState(false);
   const [isLessonsSectionCollapsed, setIsLessonsSectionCollapsed] = useState(false);
   const [isAssessmentsSectionCollapsed, setIsAssessmentsSectionCollapsed] = useState(false);
@@ -274,6 +310,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const collapseAll = () => {
     setIsCourseMetaCollapsed(true);
+    setIsPerformanceCriteriaCollapsed(true);
     setIsUnitInfoCollapsed(true);
     setIsLessonsSectionCollapsed(false);
     setIsAssessmentsSectionCollapsed(false);
@@ -308,6 +345,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const expandAll = () => {
     setIsCourseMetaCollapsed(false);
+    setIsPerformanceCriteriaCollapsed(false);
     setIsUnitInfoCollapsed(false);
     setIsLessonsSectionCollapsed(false);
     setIsAssessmentsSectionCollapsed(false);
@@ -343,6 +381,55 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setDeletingUnitId(null);
     setStatusMessage(`Unit of Competency "${deletedUnit.unitCode}" deleted.`);
     setTimeout(() => setStatusMessage(null), 3500);
+  };
+
+  const handleAddPerformanceCriterion = (unitIdx: number = activeUnitIndex) => {
+    const updated = [...course.units];
+    const targetUnit = updated[unitIdx];
+    if (!targetUnit.performanceCriteria) {
+      targetUnit.performanceCriteria = [];
+    }
+    const pcCount = targetUnit.performanceCriteria.length + 1;
+    const newCriterion: UnitPerformanceCriterion = {
+      id: `pc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      element: 'Element 1: Core Performance Requirements',
+      code: `1.${pcCount}`,
+      title: `Performance Criterion 1.${pcCount}`,
+      description: 'Satisfies unit benchmark and performance requirements in an industry workplace environment.'
+    };
+    targetUnit.performanceCriteria.push(newCriterion);
+    setCourse({ ...course, units: updated });
+    setStatusMessage(`✨ Added Performance Criterion 1.${pcCount}.`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleDeletePerformanceCriterion = (unitIdx: number, critId: string) => {
+    const updated = [...course.units];
+    const targetUnit = updated[unitIdx];
+    if (targetUnit.performanceCriteria) {
+      targetUnit.performanceCriteria = targetUnit.performanceCriteria.filter((c) => c.id !== critId);
+      setCourse({ ...course, units: updated });
+    }
+    setDeletingUnitCriterionId(null);
+    setStatusMessage('Performance Criterion deleted.');
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleUpdatePerformanceCriterion = (
+    unitIdx: number,
+    critIdx: number,
+    field: keyof UnitPerformanceCriterion,
+    value: string
+  ) => {
+    const updated = [...course.units];
+    const targetUnit = updated[unitIdx];
+    if (targetUnit.performanceCriteria && targetUnit.performanceCriteria[critIdx]) {
+      targetUnit.performanceCriteria[critIdx] = {
+        ...targetUnit.performanceCriteria[critIdx],
+        [field]: value
+      };
+      setCourse({ ...course, units: updated });
+    }
   };
 
   const handleAddLesson = (unitIdx: number) => {
@@ -859,6 +946,240 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs text-amber-700 font-mono font-bold outline-none focus:border-amber-600 shadow-2xs"
               />
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Performance Criteria (Collapsible) - Positioned above Assessment */}
+      <div
+        data-agent-id="course-builder-performance-criteria-card"
+        data-testid="performance-criteria-card"
+        className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs transition-all"
+      >
+        <div
+          onClick={() => setIsPerformanceCriteriaCollapsed(!isPerformanceCriteriaCollapsed)}
+          className="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+        >
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsPerformanceCriteriaCollapsed(!isPerformanceCriteriaCollapsed);
+              }}
+              data-agent-id="course-builder-toggle-performance-criteria-btn"
+              data-testid="toggle-performance-criteria-btn"
+              aria-label="Toggle Performance Criteria Section"
+              aria-expanded={!isPerformanceCriteriaCollapsed}
+              className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors"
+              title={
+                isPerformanceCriteriaCollapsed
+                  ? 'Expand Performance Criteria Section'
+                  : 'Collapse Performance Criteria Section'
+              }
+            >
+              {isPerformanceCriteriaCollapsed ? (
+                <ChevronRight className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-emerald-600" />
+              )}
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Target className="w-4 h-4 text-emerald-600" />
+                  <span>Performance Criteria</span>
+                </h4>
+
+                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold">
+                  {(activeUnit.performanceCriteria || []).length} Criteria
+                </span>
+
+                {course.units.length > 0 && (
+                  <div
+                    className="flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 rounded-lg px-2 py-0.5 ml-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-slate-400 font-bold">Unit:</span>
+                    <select
+                      value={activeUnitIndex}
+                      onChange={(e) => setActiveUnitIndex(parseInt(e.target.value))}
+                      className="bg-transparent text-emerald-700 font-bold font-mono outline-none cursor-pointer"
+                      title="Select unit to view/edit performance criteria"
+                      aria-label="Select Unit for Performance Criteria"
+                    >
+                      {course.units.map((u, i) => (
+                        <option key={u.id} value={i}>
+                          {u.unitCode} - {u.unitTitle} ({(u.performanceCriteria || []).length})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                ASQA competency benchmark criteria &amp; performance statements that define learning outcomes.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => handleAddPerformanceCriterion(activeUnitIndex)}
+              data-agent-id="course-builder-add-performance-criterion-btn"
+              data-testid="add-performance-criterion-btn"
+              aria-label="Add Performance Criterion"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+              title="Add new performance criterion to active unit"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Performance Criterion</span>
+            </button>
+          </div>
+        </div>
+
+        {!isPerformanceCriteriaCollapsed && (
+          <div className="p-4 pt-0 border-t border-slate-100 space-y-3 mt-2">
+            {!activeUnit.performanceCriteria || activeUnit.performanceCriteria.length === 0 ? (
+              <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
+                <Target className="w-8 h-8 text-slate-400 mx-auto" />
+                <p className="text-xs font-bold text-slate-700">No performance criteria defined for this unit yet.</p>
+                <p className="text-[11px] text-slate-500">
+                  Click &ldquo;+ Add Performance Criterion&rdquo; to establish the required competency benchmarks before defining assessments.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleAddPerformanceCriterion(activeUnitIndex)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add First Criterion</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeUnit.performanceCriteria.map((pc, pcIdx) => (
+                  <div
+                    key={pc.id}
+                    data-agent-id={`course-builder-performance-criterion-${pc.id}`}
+                    data-testid={`performance-criterion-item-${pc.id}`}
+                    className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 transition-colors space-y-2.5 shadow-2xs"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                          PC {pc.code || `${pcIdx + 1}`}
+                        </span>
+                        <input
+                          type="text"
+                          value={pc.element}
+                          onChange={(e) =>
+                            handleUpdatePerformanceCriterion(activeUnitIndex, pcIdx, 'element', e.target.value)
+                          }
+                          placeholder="Element Name (e.g. Element 1: Manage WHS)..."
+                          data-agent-id={`course-builder-pc-element-${pc.id}`}
+                          data-testid={`pc-element-${pc.id}`}
+                          aria-label={`Performance Criterion Element ${pc.code}`}
+                          className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded px-2 py-1 outline-none focus:border-emerald-600 min-w-[140px] flex-1 sm:max-w-xs shadow-2xs"
+                        />
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-mono text-slate-500 font-bold">Code:</span>
+                          <input
+                            type="text"
+                            value={pc.code}
+                            onChange={(e) =>
+                              handleUpdatePerformanceCriterion(activeUnitIndex, pcIdx, 'code', e.target.value)
+                            }
+                            placeholder="1.1"
+                            data-agent-id={`course-builder-pc-code-${pc.id}`}
+                            data-testid={`pc-code-${pc.id}`}
+                            aria-label={`Performance Criterion Code ${pc.id}`}
+                            className="w-14 text-xs font-mono font-bold text-emerald-700 bg-white border border-slate-200 rounded px-1.5 py-1 outline-none focus:border-emerald-600 text-center shadow-2xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Delete with Confirm Delete button */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {deletingUnitCriterionId === pc.id ? (
+                          <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePerformanceCriterion(activeUnitIndex, pc.id)}
+                              data-agent-id={`course-builder-confirm-delete-pc-${pc.id}-btn`}
+                              data-testid={`confirm-delete-pc-${pc.id}`}
+                              aria-label={`Confirm Delete Criterion ${pc.code}`}
+                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-0.5 shadow-2xs transition-colors"
+                            >
+                              <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingUnitCriterionId(null)}
+                              data-agent-id={`course-builder-cancel-delete-pc-${pc.id}-btn`}
+                              data-testid={`cancel-delete-pc-${pc.id}`}
+                              aria-label={`Cancel Delete Criterion ${pc.code}`}
+                              className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingUnitCriterionId(pc.id)}
+                            data-agent-id={`course-builder-delete-pc-${pc.id}-btn`}
+                            data-testid={`delete-pc-${pc.id}`}
+                            aria-label={`Delete Criterion ${pc.code}`}
+                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors rounded hover:bg-rose-50"
+                            title={`Delete Criterion ${pc.code}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                        Criterion Statement &amp; Required Skill / Knowledge Outcome
+                      </label>
+                      <input
+                        type="text"
+                        value={pc.title}
+                        onChange={(e) =>
+                          handleUpdatePerformanceCriterion(activeUnitIndex, pcIdx, 'title', e.target.value)
+                        }
+                        placeholder="e.g. Identify and interpret statutory WHS compliance obligations..."
+                        data-agent-id={`course-builder-pc-title-${pc.id}`}
+                        data-testid={`pc-title-${pc.id}`}
+                        aria-label={`Performance Criterion Title ${pc.code}`}
+                        className="w-full text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-600 shadow-2xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                        Performance Evidence &amp; Assessment Benchmark Description
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={pc.description || ''}
+                        onChange={(e) =>
+                          handleUpdatePerformanceCriterion(activeUnitIndex, pcIdx, 'description', e.target.value)
+                        }
+                        placeholder="Detailed evidence criteria against which the assessments below will evaluate competence..."
+                        data-agent-id={`course-builder-pc-desc-${pc.id}`}
+                        data-testid={`pc-desc-${pc.id}`}
+                        aria-label={`Performance Criterion Description ${pc.code}`}
+                        className="w-full text-xs text-slate-700 bg-white border border-slate-200 focus:border-emerald-600 rounded-lg p-2 outline-none leading-relaxed resize-y font-sans shadow-2xs"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // 1. Roles & RBAC Tests
 import {
@@ -49,7 +51,9 @@ import {
 // 5. Units of Competency Lifecycle & Deletion Tests
 import {
   createDefaultUnit,
-  deleteUnitFromCourse
+  deleteUnitFromCourse,
+  createDefaultPerformanceCriteria,
+  createPerformanceCriterion
 } from '../lib/courseBuilder/units.ts';
 
 describe('Super-RTO Unified Platform Test Suite', () => {
@@ -321,5 +325,66 @@ describe('Super-RTO Unified Platform Test Suite', () => {
     });
   });
 
+  describe('Performance Criteria & Hierarchy Verification', () => {
+    it('should create default performance criteria with Australian competency standard items', () => {
+      const criteria = createDefaultPerformanceCriteria();
+      assert.strictEqual(criteria.length, 3);
+      assert.strictEqual(criteria[0].code, '1.1');
+      assert.strictEqual(criteria[1].code, '1.2');
+      assert.strictEqual(criteria[2].code, '2.1');
+      assert.ok(criteria[0].title.includes('statutory WHS obligations'));
+      assert.ok(criteria[0].element.includes('Element 1'));
+    });
+
+    it('should create custom performance criterion with valid identifier and fields', () => {
+      const pc = createPerformanceCriterion(
+        'Element 3: Emergency response',
+        '3.1',
+        'Initiate workplace evacuation drill',
+        'Coordinate warden network according to AS 3745.'
+      );
+      assert.ok(pc.id.startsWith('pc-'));
+      assert.strictEqual(pc.code, '3.1');
+      assert.strictEqual(pc.element, 'Element 3: Emergency response');
+      assert.strictEqual(pc.title, 'Initiate workplace evacuation drill');
+      assert.strictEqual(pc.description, 'Coordinate warden network according to AS 3745.');
+    });
+
+    it('should initialize new units of competency with default performance criteria', () => {
+      const unit = createDefaultUnit('BSBWHS513', 'Lead WHS risk management');
+      assert.strictEqual(unit.unitCode, 'BSBWHS513');
+      assert.ok(Array.isArray(unit.performanceCriteria));
+      assert.strictEqual(unit.performanceCriteria.length, 3);
+      assert.strictEqual(unit.performanceCriteria[0].code, '1.1');
+    });
+
+    it('should verify in UnifiedCourseBuilder that Performance Criteria card is positioned strictly ABOVE Assessment', () => {
+      const filePath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const content = fs.readFileSync(filePath, 'utf8');
+
+      const performanceCriteriaIndex = content.indexOf('data-testid="performance-criteria-card"');
+      const assessmentSectionIndex = content.indexOf('data-testid="toggle-assessments-section-btn"');
+
+      assert.ok(performanceCriteriaIndex > 0, 'Performance criteria card must exist in UnifiedCourseBuilder');
+      assert.ok(assessmentSectionIndex > 0, 'Assessment section must exist in UnifiedCourseBuilder');
+      assert.ok(
+        performanceCriteriaIndex < assessmentSectionIndex,
+        'Performance criteria card MUST be positioned above Assessment section'
+      );
+    });
+
+    it('should verify confirm delete safety button is present for performance criteria', () => {
+      const filePath = path.resolve('components/courseBuilder/UnifiedCourseBuilder.tsx');
+      const content = fs.readFileSync(filePath, 'utf8');
+
+      assert.ok(content.includes('confirm-delete-pc-'));
+      assert.ok(content.includes('cancel-delete-pc-'));
+      assert.ok(content.includes('Confirm Delete'));
+      assert.ok(content.includes('data-testid="performance-criteria-card"'));
+      assert.ok(content.includes('data-agent-id="course-builder-toggle-performance-criteria-btn"'));
+    });
+  });
+
 });
+
 
