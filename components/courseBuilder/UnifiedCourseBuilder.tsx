@@ -134,6 +134,8 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [aiSyllabusInput, setAiSyllabusInput] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [deletingLessonId, setDeletingLessonId] = useState<string | null>(null);
+  const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
 
   const activeUnit = course.units[activeUnitIndex] || course.units[0];
 
@@ -172,15 +174,37 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setCourse({ ...course, units: updatedUnits });
   };
 
+  const handleDeleteLesson = (unitIdx: number, lessonIdx: number) => {
+    const updatedUnits = [...course.units];
+    updatedUnits[unitIdx].lessons.splice(lessonIdx, 1);
+    setCourse({ ...course, units: updatedUnits });
+    setDeletingLessonId(null);
+  };
+
   const handleAddBlock = (unitIdx: number, lessonIdx: number, type: LessonBlock['type']) => {
     const updatedUnits = [...course.units];
+    const defaultTitles: Record<LessonBlock['type'], string> = {
+      text_description: 'Core Theory & Concepts',
+      teacher_guide: 'Teacher Pedagogy Guide',
+      youtube_video: 'Video Lecture',
+      google_drive_link: 'Google Drive Resource',
+      file_upload: 'Attached Coursework File',
+      quiz: 'Formative Knowledge Check'
+    };
     updatedUnits[unitIdx].lessons[lessonIdx].blocks.push({
-      id: `blk-${Date.now()}`,
+      id: `blk-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       type,
-      title: type === 'teacher_guide' ? 'Teacher Pedagogy Guide' : type === 'youtube_video' ? 'Video Lecture' : 'Resource Block',
+      title: defaultTitles[type] || 'Resource Block',
       content: ''
     });
     setCourse({ ...course, units: updatedUnits });
+  };
+
+  const handleDeleteBlock = (unitIdx: number, lessonIdx: number, blockIdx: number) => {
+    const updatedUnits = [...course.units];
+    updatedUnits[unitIdx].lessons[lessonIdx].blocks.splice(blockIdx, 1);
+    setCourse({ ...course, units: updatedUnits });
+    setDeletingBlockId(null);
   };
 
   const handleAiIngest = () => {
@@ -395,85 +419,269 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleAddLesson(activeUnitIndex)}
-                    className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1"
+                    data-agent-id="course-builder-add-lesson-btn"
+                    data-testid="add-lesson-btn"
+                    aria-label="Add Modular Lesson"
+                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
                   >
-                    <Plus className="w-3 h-3" /> Add Lesson (45m)
+                    <Plus className="w-3.5 h-3.5" /> Add Lesson (45m)
                   </button>
                 </div>
 
-                {activeUnit.lessons.map((les, lIdx) => (
-                  <div key={les.id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-mono text-[10px] font-bold">
-                          {lIdx + 1}
-                        </span>
-                        <input
-                          type="text"
-                          value={les.title}
-                          onChange={(e) => {
-                            const updated = [...course.units];
-                            updated[activeUnitIndex].lessons[lIdx].title = e.target.value;
-                            setCourse({ ...course, units: updated });
-                          }}
-                          className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5"
-                        />
-                      </div>
-                      <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1 font-semibold">
-                        <Clock className="w-3 h-3 text-slate-400" /> {les.estimatedMinutes}m
-                      </span>
-                    </div>
-
-                    {/* Lesson Blocks */}
-                    <div className="space-y-2 pl-4 border-l-2 border-indigo-100">
-                      {les.blocks.map((blk) => (
-                        <div key={blk.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
-                          <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold">
-                            <span className="font-mono uppercase text-indigo-700">{blk.type.replace('_', ' ')}</span>
-                            <span>{blk.title}</span>
-                          </div>
-                          <textarea
-                            rows={2}
-                            value={blk.content}
+                {activeUnit.lessons.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
+                    <BookOpen className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
+                    <p className="text-xs font-medium text-slate-600">No modular lessons in this unit yet.</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Click &ldquo;Add Lesson (45m)&rdquo; above to stack modular lessons.</p>
+                  </div>
+                ) : (
+                  activeUnit.lessons.map((les, lIdx) => (
+                    <div key={les.id} className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                      {/* Lesson Header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-mono text-[10px] font-bold shrink-0">
+                            {lIdx + 1}
+                          </span>
+                          <input
+                            type="text"
+                            value={les.title}
                             onChange={(e) => {
                               const updated = [...course.units];
-                              const b = updated[activeUnitIndex].lessons[lIdx].blocks.find(x => x.id === blk.id);
-                              if (b) b.content = e.target.value;
+                              updated[activeUnitIndex].lessons[lIdx].title = e.target.value;
                               setCourse({ ...course, units: updated });
                             }}
-                            className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-indigo-600"
-                            placeholder="Enter lesson block theory, teacher pedagogy guidelines, or resource link..."
+                            data-agent-id={`course-builder-lesson-title-input-${les.id}`}
+                            data-testid={`course-builder-lesson-title-${les.id}`}
+                            aria-label={`Lesson ${lIdx + 1} Title`}
+                            className="border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-xs font-bold text-slate-900 outline-none px-1 py-0.5 flex-1 min-w-[120px]"
+                            placeholder="Lesson Title..."
                           />
                         </div>
-                      ))}
 
-                      {/* Block Triggers */}
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'text_description')}
-                          className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-700 font-bold hover:bg-slate-50"
-                        >
-                          + Theory Block
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'teacher_guide')}
-                          className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold hover:bg-amber-100"
-                        >
-                          + Teacher Pedagogy
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'youtube_video')}
-                          className="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-[10px] text-rose-800 font-bold hover:bg-rose-100"
-                        >
-                          + YouTube Video
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono font-semibold">
+                            <Clock className="w-3 h-3 text-slate-400" />
+                            <input
+                              type="number"
+                              value={les.estimatedMinutes}
+                              onChange={(e) => {
+                                const updated = [...course.units];
+                                updated[activeUnitIndex].lessons[lIdx].estimatedMinutes = parseInt(e.target.value) || 45;
+                                setCourse({ ...course, units: updated });
+                              }}
+                              data-agent-id={`course-builder-lesson-duration-input-${les.id}`}
+                              data-testid={`course-builder-lesson-duration-${les.id}`}
+                              aria-label={`Lesson ${lIdx + 1} Duration Minutes`}
+                              className="w-10 px-1 py-0.5 text-[10px] font-mono border border-slate-200 rounded text-center outline-none focus:border-indigo-600"
+                            />
+                            <span>m</span>
+                          </div>
+
+                          {deletingLessonId === les.id ? (
+                            <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLesson(activeUnitIndex, lIdx)}
+                                data-agent-id={`course-builder-confirm-delete-lesson-${les.id}-btn`}
+                                data-testid={`confirm-delete-lesson-${les.id}`}
+                                aria-label={`Confirm Delete Lesson ${les.title}`}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                              >
+                                <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingLessonId(null)}
+                                data-agent-id={`course-builder-cancel-delete-lesson-${les.id}-btn`}
+                                data-testid={`cancel-delete-lesson-${les.id}`}
+                                aria-label="Cancel delete lesson"
+                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-medium transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeletingLessonId(les.id)}
+                              data-agent-id={`course-builder-delete-lesson-${les.id}-btn`}
+                              data-testid={`delete-lesson-${les.id}`}
+                              aria-label={`Delete Lesson ${les.title}`}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                              title="Delete Lesson"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Lesson Blocks (Elements Stack) */}
+                      <div className="space-y-2 pl-4 border-l-2 border-indigo-100">
+                        {les.blocks.map((blk, bIdx) => (
+                          <div key={blk.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold gap-2">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <span className={`font-mono uppercase px-1.5 py-0.5 rounded text-[9px] font-semibold tracking-wider ${
+                                  blk.type === 'teacher_guide' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
+                                  blk.type === 'youtube_video' ? 'bg-rose-100 text-rose-900 border border-rose-200' :
+                                  blk.type === 'google_drive_link' ? 'bg-blue-100 text-blue-900 border border-blue-200' :
+                                  blk.type === 'file_upload' ? 'bg-purple-100 text-purple-900 border border-purple-200' :
+                                  blk.type === 'quiz' ? 'bg-emerald-100 text-emerald-900 border border-emerald-200' :
+                                  'bg-slate-200 text-slate-800 border border-slate-300'
+                                }`}>
+                                  {blk.type.replace(/_/g, ' ')}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={blk.title}
+                                  onChange={(e) => {
+                                    const updated = [...course.units];
+                                    const targetBlk = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                    if (targetBlk) targetBlk.title = e.target.value;
+                                    setCourse({ ...course, units: updated });
+                                  }}
+                                  data-agent-id={`course-builder-block-title-input-${blk.id}`}
+                                  data-testid={`course-builder-block-title-${blk.id}`}
+                                  aria-label={`Block Title for ${blk.title}`}
+                                  className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-600 text-slate-700 font-medium outline-none px-1 py-0.5 flex-1 min-w-[100px]"
+                                  placeholder="Block Title..."
+                                />
+                              </div>
+
+                              <div className="shrink-0 flex items-center">
+                                {deletingBlockId === blk.id ? (
+                                  <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteBlock(activeUnitIndex, lIdx, bIdx)}
+                                      data-agent-id={`course-builder-confirm-delete-block-${blk.id}-btn`}
+                                      data-testid={`confirm-delete-block-${blk.id}`}
+                                      aria-label={`Confirm Delete Element ${blk.title}`}
+                                      className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold flex items-center gap-1 transition-colors"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" /> Confirm Delete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingBlockId(null)}
+                                      data-agent-id={`course-builder-cancel-delete-block-${blk.id}-btn`}
+                                      data-testid={`cancel-delete-block-${blk.id}`}
+                                      aria-label="Cancel delete block"
+                                      className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-medium transition-colors"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingBlockId(blk.id)}
+                                    data-agent-id={`course-builder-delete-block-${blk.id}-btn`}
+                                    data-testid={`delete-block-${blk.id}`}
+                                    aria-label={`Delete Element ${blk.title}`}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="Delete Element"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <textarea
+                              rows={2}
+                              value={blk.content}
+                              onChange={(e) => {
+                                const updated = [...course.units];
+                                const b = updated[activeUnitIndex].lessons[lIdx].blocks[bIdx];
+                                if (b) b.content = e.target.value;
+                                setCourse({ ...course, units: updated });
+                              }}
+                              data-agent-id={`course-builder-block-content-textarea-${blk.id}`}
+                              data-testid={`course-builder-block-content-${blk.id}`}
+                              aria-label={`Content for ${blk.title}`}
+                              className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-indigo-600 font-sans"
+                              placeholder={
+                                blk.type === 'youtube_video' ? 'Paste YouTube video URL...' :
+                                blk.type === 'google_drive_link' ? 'Paste Google Drive folder or file URL...' :
+                                blk.type === 'quiz' ? 'Enter quiz questions, answers, and competency check criteria...' :
+                                blk.type === 'file_upload' ? 'Specify file upload guidelines or required document format...' :
+                                blk.type === 'teacher_guide' ? 'Enter pedagogical guidelines, lesson scaffolding, and student support notes...' :
+                                'Enter lesson block theory, key concepts, or learning content...'
+                              }
+                            />
+                          </div>
+                        ))}
+
+                        {/* Add Element Triggers */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1">Add Element:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'text_description')}
+                            data-agent-id={`course-builder-add-theory-block-${les.id}-btn`}
+                            data-testid={`add-theory-block-${les.id}`}
+                            aria-label="Add Theory Block"
+                            className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-[10px] text-slate-700 font-bold hover:bg-slate-50 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <FileText className="w-2.5 h-2.5 text-indigo-600" /> + Theory
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'teacher_guide')}
+                            data-agent-id={`course-builder-add-pedagogy-block-${les.id}-btn`}
+                            data-testid={`add-pedagogy-block-${les.id}`}
+                            aria-label="Add Teacher Pedagogy Guide"
+                            className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold hover:bg-amber-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-amber-600" /> + Pedagogy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'youtube_video')}
+                            data-agent-id={`course-builder-add-video-block-${les.id}-btn`}
+                            data-testid={`add-video-block-${les.id}`}
+                            aria-label="Add YouTube Video"
+                            className="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-[10px] text-rose-800 font-bold hover:bg-rose-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <Video className="w-2.5 h-2.5 text-rose-600" /> + Video
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'google_drive_link')}
+                            data-agent-id={`course-builder-add-drive-block-${les.id}-btn`}
+                            data-testid={`add-drive-block-${les.id}`}
+                            aria-label="Add Google Drive Resource"
+                            className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[10px] text-blue-800 font-bold hover:bg-blue-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <Layers className="w-2.5 h-2.5 text-blue-600" /> + Drive
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'file_upload')}
+                            data-agent-id={`course-builder-add-fileupload-block-${les.id}-btn`}
+                            data-testid={`add-fileupload-block-${les.id}`}
+                            aria-label="Add File Attachment"
+                            className="px-2 py-0.5 rounded-lg bg-purple-50 border border-purple-200 text-[10px] text-purple-800 font-bold hover:bg-purple-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <Plus className="w-2.5 h-2.5 text-purple-600" /> + File
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlock(activeUnitIndex, lIdx, 'quiz')}
+                            data-agent-id={`course-builder-add-quiz-block-${les.id}-btn`}
+                            data-testid={`add-quiz-block-${les.id}`}
+                            aria-label="Add Knowledge Check Quiz"
+                            className="px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-800 font-bold hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          >
+                            <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" /> + Quiz
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
 
               {/* Assessments */}
