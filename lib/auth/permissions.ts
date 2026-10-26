@@ -338,6 +338,73 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'institution.defaults.manage',
     'compliance.framework.manage',
   ],
+
+  vice_president: [
+    'courses.view',
+    'courses.create',
+    'courses.publish',
+    'grades.view',
+    'applications.view',
+    'applications.review',
+    'students.manage',
+    'events.manage',
+    'calendar.manage',
+    'ai.operations',
+    'messaging.staff',
+    'telemetry.view',
+    'users.manage',
+    'rules.manage',
+    'campus_metrics.manage',
+  ],
+
+  cto: [
+    'courses.view',
+    'ai.operations',
+    'telemetry.view',
+    'api_keys.manage',
+    'rules.manage',
+    'campus_metrics.manage',
+    'messaging.staff',
+    'sheets.sync',
+    'classroom.manage',
+  ],
+
+  tech_admin: [
+    'courses.view',
+    'ai.operations',
+    'telemetry.view',
+    'api_keys.manage',
+    'rules.manage',
+    'users.manage',
+    'messaging.staff',
+    'sheets.sync',
+  ],
+
+  admin: [
+    'courses.view',
+    'courses.create',
+    'applications.view',
+    'applications.review',
+    'applications.export',
+    'students.manage',
+    'users.manage',
+    'events.manage',
+    'calendar.manage',
+    'faqs.edit',
+    'messaging.staff',
+    'sheets.sync',
+    'campus_metrics.manage',
+  ],
+
+  student_counsellor: [
+    'courses.view',
+    'applications.view',
+    'applications.review',
+    'students.manage',
+    'messaging.staff',
+    'events.manage',
+    'calendar.manage',
+  ],
 };
 
 export const PERMISSION_CATEGORIES: readonly PermissionCategory[] = [
@@ -347,6 +414,36 @@ export const PERMISSION_CATEGORIES: readonly PermissionCategory[] = [
   'Communications & AI',
   'Administration & Governance',
 ];
+
+/**
+ * Maps each Admin Panel tab to the permissions required to view/access it.
+ * If an array has multiple permissions, possessing ANY one of them grants visibility.
+ * An empty array means the tab is open to all authenticated staff/users.
+ */
+export const ADMIN_PANEL_TAB_ACCESS: Record<string, string[]> = {
+  account_profile: [], // Accessible to all roles
+  campus_metrics: ['campus_metrics.manage'],
+  course_builder: ['courses.create'], // Students only have courses.view and cannot access Course Builder
+  compliance: ['compliance.framework.manage', 'rules.manage'],
+  role_permissions: ['rules.manage'],
+  rag_pipeline: ['ai.operations', 'telemetry.view'],
+  blog_insights: ['courses.publish', 'messaging.staff'],
+  api_key: ['api_keys.manage'],
+  telemetry: ['telemetry.view'],
+  staff_messaging: ['messaging.staff'],
+  faculty_staff_directory: ['users.manage'],
+  user_management: ['users.manage', 'students.manage'],
+  applications: ['applications.view'],
+  sheets_sync: ['sheets.sync'],
+  images: ['courses.create'],
+  classroom: ['classroom.manage'],
+  embed_code: ['rules.manage', 'ai.operations', 'telemetry.view'],
+  events: ['events.manage'],
+  knowledge: ['faqs.edit'],
+  tokens: ['tokens.manage', 'finance.view'],
+  calendar: ['calendar.manage'],
+  drive_upload: ['applications.export', 'users.manage', 'courses.create']
+};
 
 export function getPermissionsForRole(
   role: string,
@@ -371,3 +468,24 @@ export function roleHasPermission(
   const rolePerms = getPermissionsForRole(role, customMap);
   return rolePerms.includes(permissionId);
 }
+
+/**
+ * Checks whether an Admin Panel tab is accessible under a given role.
+ * Superadmin always has access to all tabs.
+ */
+export function isTabAccessibleForRole(
+  tabId: string,
+  role: string,
+  customMap?: Record<string, string[]>
+): boolean {
+  const norm = (role || '').toLowerCase().trim();
+  if (norm === 'superadmin') return true;
+  if (tabId === 'account_profile') return true;
+
+  const required = ADMIN_PANEL_TAB_ACCESS[tabId];
+  if (!required || required.length === 0) return true;
+
+  const userPerms = getPermissionsForRole(norm, customMap);
+  return required.some((perm) => userPerms.includes(perm));
+}
+

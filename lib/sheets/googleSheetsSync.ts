@@ -423,7 +423,7 @@ export async function syncFromGoogleSheet(sheetIdOrUrl: string): Promise<{
       coursesCount: loadedCoursesCount,
       unitsCount: loadedUnitsCount,
       faqsCount: loadedFaqsCount,
-      message: `Successfully synchronized ${loadedCoursesCount} courses, ${loadedUnitsCount} unit syllabuses, and ${loadedFaqsCount} FAQs from Google Sheets!`
+      message: `Successfully synchronized ${loadedCoursesCount} courses, ${loadedUnitsCount} unit syllabi, and ${loadedFaqsCount} FAQs from Google Sheets!`
     };
   } catch (error: any) {
     console.error('Error syncing from Google Sheets:', error);

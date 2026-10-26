@@ -80,17 +80,17 @@ export async function POST(req: NextRequest) {
           },
           {
             uid: 'L5euSJAfNKdDOX6mT0qmrCGjUA53',
-            email: 'admin@aifoundation.net.au',
-            fullName: 'Executive Superadmin',
+            email: 'support@aifoundation.net.au',
+            fullName: 'AI Foundation Support (Primary Superadmin)',
             role: 'SUPERADMIN',
             dept: 'Executive Directorate & Course Governance',
           },
           {
-            uid: 'L5euSJAfNKdDOX6mT0qmrCGjUA53',
-            email: 'support@aifoundation.net.au',
-            fullName: 'AI Foundation Support',
+            uid: 'superadmin_secondary_david',
+            email: 'davidrobertson.info@gmail.com',
+            fullName: 'David Robertson (Secondary Superadmin)',
             role: 'SUPERADMIN',
-            dept: 'Executive Directorate & Course Governance',
+            dept: 'Executive Directorate & Systems Architecture',
           }
         ];
 

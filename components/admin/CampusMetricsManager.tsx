@@ -22,18 +22,40 @@ import {
   Trash2,
   BellRing,
   Clock,
-  Wind
+  Wind,
+  Laptop,
+  HeartHandshake,
+  EyeOff
 } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/firebase/client';
 
 export interface CampusMetrics {
   heroBadgeText?: string;
+  // Box 1: Total Students
   totalStudents: string;
-  placementRate: string;
-  facultyStaff: string;
+  studentsTitle?: string;
   studentsSubtitle?: string;
+  showTotalStudents?: boolean;
+  // Box 2: Placement Rate
+  placementRate: string;
+  placementTitle?: string;
   placementSubtitle?: string;
+  showPlacementRate?: boolean;
+  // Box 3: Faculty & Staff
+  facultyStaff: string;
+  facultyTitle?: string;
   facultySubtitle?: string;
+  showFacultyStaff?: boolean;
+  // Box 4: Online Courses (NEW)
+  onlineCourses: string;
+  onlineCoursesTitle?: string;
+  onlineCoursesSubtitle?: string;
+  showOnlineCourses?: boolean;
+  // Box 5: Community Courses (NEW)
+  communityCourses: string;
+  communityCoursesTitle?: string;
+  communityCoursesSubtitle?: string;
+  showCommunityCourses?: boolean;
   // Severe Emergency Update (Weather / Environmental Hazard)
   emergencyAlert?: string;
   emergencyTitle?: string;
@@ -46,12 +68,32 @@ export interface CampusMetrics {
 
 export const DEFAULT_METRICS: CampusMetrics = {
   heroBadgeText: 'Your Future is Now • Powered by Gemini',
+  // Box 1
   totalStudents: '5,000+',
-  placementRate: '96%',
-  facultyStaff: '350+',
+  studentsTitle: 'Total Students',
   studentsSubtitle: 'Active learners across all faculties',
+  showTotalStudents: true,
+  // Box 2
+  placementRate: '96%',
+  placementTitle: 'Graduate Placement',
   placementSubtitle: 'Graduate employment within 90 days',
+  showPlacementRate: true,
+  // Box 3
+  facultyStaff: '350+',
+  facultyTitle: 'Faculty & Staff',
   facultySubtitle: 'Academic educators & operational staff',
+  showFacultyStaff: true,
+  // Box 4
+  onlineCourses: '120+',
+  onlineCoursesTitle: 'Online Courses',
+  onlineCoursesSubtitle: 'Flexible remote & self-paced credential pathways',
+  showOnlineCourses: true,
+  // Box 5
+  communityCourses: '45+',
+  communityCoursesTitle: 'Community Courses',
+  communityCoursesSubtitle: 'Regional outreach & adult vocational learning',
+  showCommunityCourses: true,
+  // Emergency
   emergencyAlert: '',
   emergencyTitle: '',
   emergencyActive: false,
@@ -227,19 +269,42 @@ export const CampusMetricsManager: React.FC = () => {
     setMetrics(DEFAULT_METRICS);
   };
 
-  const formatStudents = (val?: string) => {
+  const formatStudents = (val?: string, customTitle?: string) => {
     const raw = (val || '5,000+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Total Students') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
     return raw.toLowerCase().includes('student') ? raw : `${raw} Students`;
   };
-  const formatPlacement = (val?: string) => {
+  const formatPlacement = (val?: string, customTitle?: string) => {
     const raw = (val || '96%').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Graduate Placement') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
     return raw.toLowerCase().includes('placement') ? raw : `${raw} Placement`;
   };
-  const formatFaculty = (val?: string) => {
+  const formatFaculty = (val?: string, customTitle?: string) => {
     const raw = (val || '350+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Faculty & Admin Staff') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
     return raw.toLowerCase().includes('faculty') || raw.toLowerCase().includes('staff')
       ? raw
       : `${raw} Faculty & Staff`;
+  };
+  const formatOnline = (val?: string, customTitle?: string) => {
+    const raw = (val || '120+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Online Courses') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
+    return raw.toLowerCase().includes('course') ? raw : `${raw} Online Courses`;
+  };
+  const formatCommunity = (val?: string, customTitle?: string) => {
+    const raw = (val || '45+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Community Courses') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
+    return raw.toLowerCase().includes('course') ? raw : `${raw} Community Courses`;
   };
 
   return (
@@ -362,31 +427,67 @@ export const CampusMetricsManager: React.FC = () => {
             </div>
 
             {/* Box 1: Total Students */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-indigo-950 flex items-center gap-2">
+            <div className={`p-4 rounded-2xl border transition-all ${
+              (metrics.showTotalStudents ?? true)
+                ? 'bg-slate-50 border-slate-200/80 shadow-xs'
+                : 'bg-slate-100/60 border-dashed border-slate-300 opacity-75'
+            } space-y-3`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">1</div>
-                  <span>Total Students Stat Box</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
-                  {['5,000+', '7,500+', '10,000+', '15,000+'].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setMetrics((prev) => ({ ...prev, totalStudents: val }))}
-                      className="px-2 py-0.5 rounded-md bg-white hover:bg-indigo-50 border border-slate-200 text-indigo-700 text-[10px] font-bold cursor-pointer transition"
-                    >
-                      {val}
-                    </button>
-                  ))}
+                  <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Total Students Box</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-xl border border-slate-200 hover:border-indigo-300 transition shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={metrics.showTotalStudents ?? true}
+                      onChange={(e) => setMetrics({ ...metrics, showTotalStudents: e.target.checked })}
+                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                      data-testid="toggle-show-total-students"
+                      data-agent-id="toggle-show-total-students"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {(metrics.showTotalStudents ?? true) ? 'Visible on Front Page' : 'Hidden'}
+                    </span>
+                  </label>
+
+                  <div className="hidden sm:flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                    {['5,000+', '7,500+', '10,000+', '15,000+'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMetrics((prev) => ({ ...prev, totalStudents: val }))}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-indigo-50 border border-slate-200 text-indigo-700 text-[10px] font-bold cursor-pointer transition"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Student Count / Headline Value
+                    Custom Label / Title
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.studentsTitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, studentsTitle: e.target.value })}
+                    placeholder="Total Students"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Headline Metric Value
                   </label>
                   <input
                     type="text"
@@ -394,50 +495,86 @@ export const CampusMetricsManager: React.FC = () => {
                     onChange={(e) => setMetrics({ ...metrics, totalStudents: e.target.value })}
                     placeholder="e.g. 5,000+"
                     required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-mono"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Subtitle Text
+                    Subtitle Description
                   </label>
                   <input
                     type="text"
                     value={metrics.studentsSubtitle || ''}
                     onChange={(e) => setMetrics({ ...metrics, studentsSubtitle: e.target.value })}
                     placeholder="Active learners across all faculties"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                   />
                 </div>
               </div>
             </div>
 
             {/* Box 2: Graduate Placement Rate */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-emerald-950 flex items-center gap-2">
+            <div className={`p-4 rounded-2xl border transition-all ${
+              (metrics.showPlacementRate ?? true)
+                ? 'bg-slate-50 border-slate-200/80 shadow-xs'
+                : 'bg-slate-100/60 border-dashed border-slate-300 opacity-75'
+            } space-y-3`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">2</div>
-                  <span>Graduate Placement Rate Stat Box</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
-                  {['94%', '96%', '98%', '99%'].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setMetrics((prev) => ({ ...prev, placementRate: val }))}
-                      className="px-2 py-0.5 rounded-md bg-white hover:bg-emerald-50 border border-slate-200 text-emerald-700 text-[10px] font-bold cursor-pointer transition"
-                    >
-                      {val}
-                    </button>
-                  ))}
+                  <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Graduate Placement Box</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-xl border border-slate-200 hover:border-emerald-300 transition shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={metrics.showPlacementRate ?? true}
+                      onChange={(e) => setMetrics({ ...metrics, showPlacementRate: e.target.checked })}
+                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 cursor-pointer"
+                      data-testid="toggle-show-placement-rate"
+                      data-agent-id="toggle-show-placement-rate"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {(metrics.showPlacementRate ?? true) ? 'Visible on Front Page' : 'Hidden'}
+                    </span>
+                  </label>
+
+                  <div className="hidden sm:flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                    {['94%', '96%', '98%', '99%'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMetrics((prev) => ({ ...prev, placementRate: val }))}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-emerald-50 border border-slate-200 text-emerald-700 text-[10px] font-bold cursor-pointer transition"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Employment / Placement Percentage
+                    Custom Label / Title
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.placementTitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, placementTitle: e.target.value })}
+                    placeholder="Graduate Placement"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Headline Metric Value
                   </label>
                   <input
                     type="text"
@@ -445,50 +582,86 @@ export const CampusMetricsManager: React.FC = () => {
                     onChange={(e) => setMetrics({ ...metrics, placementRate: e.target.value })}
                     placeholder="e.g. 96%"
                     required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white font-mono"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Subtitle Text
+                    Subtitle Description
                   </label>
                   <input
                     type="text"
                     value={metrics.placementSubtitle || ''}
                     onChange={(e) => setMetrics({ ...metrics, placementSubtitle: e.target.value })}
                     placeholder="Graduate employment within 90 days"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
                   />
                 </div>
               </div>
             </div>
 
             {/* Box 3: Total Faculty and Admin Staff */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-amber-950 flex items-center gap-2">
+            <div className={`p-4 rounded-2xl border transition-all ${
+              (metrics.showFacultyStaff ?? true)
+                ? 'bg-slate-50 border-slate-200/80 shadow-xs'
+                : 'bg-slate-100/60 border-dashed border-slate-300 opacity-75'
+            } space-y-3`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                   <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">3</div>
-                  <span>Total Faculty & Admin Staff Stat Box</span>
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
-                  {['250+', '350+', '500+', '750+'].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setMetrics((prev) => ({ ...prev, facultyStaff: val }))}
-                      className="px-2 py-0.5 rounded-md bg-white hover:bg-amber-50 border border-slate-200 text-amber-800 text-[10px] font-bold cursor-pointer transition"
-                    >
-                      {val}
-                    </button>
-                  ))}
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <GraduationCap className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Total Faculty & Staff Box</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-xl border border-slate-200 hover:border-amber-300 transition shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={metrics.showFacultyStaff ?? true}
+                      onChange={(e) => setMetrics({ ...metrics, showFacultyStaff: e.target.checked })}
+                      className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 cursor-pointer"
+                      data-testid="toggle-show-faculty-staff"
+                      data-agent-id="toggle-show-faculty-staff"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {(metrics.showFacultyStaff ?? true) ? 'Visible on Front Page' : 'Hidden'}
+                    </span>
+                  </label>
+
+                  <div className="hidden sm:flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                    {['250+', '350+', '500+', '750+'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMetrics((prev) => ({ ...prev, facultyStaff: val }))}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-amber-50 border border-slate-200 text-amber-800 text-[10px] font-bold cursor-pointer transition"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Total Faculty & Staff Number
+                    Custom Label / Title
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.facultyTitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, facultyTitle: e.target.value })}
+                    placeholder="Faculty & Staff"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Headline Metric Value
                   </label>
                   <input
                     type="text"
@@ -496,19 +669,193 @@ export const CampusMetricsManager: React.FC = () => {
                     onChange={(e) => setMetrics({ ...metrics, facultyStaff: e.target.value })}
                     placeholder="e.g. 350+"
                     required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white font-mono"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Subtitle Text
+                    Subtitle Description
                   </label>
                   <input
                     type="text"
                     value={metrics.facultySubtitle || ''}
                     onChange={(e) => setMetrics({ ...metrics, facultySubtitle: e.target.value })}
                     placeholder="Academic educators & operational staff"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Box 4: Online Courses (NEW) */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              (metrics.showOnlineCourses ?? true)
+                ? 'bg-slate-50 border-slate-200/80 shadow-xs'
+                : 'bg-slate-100/60 border-dashed border-slate-300 opacity-75'
+            } space-y-3`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">4</div>
+                  <span className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                    <Laptop className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Online Courses Box</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-xl border border-slate-200 hover:border-blue-300 transition shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={metrics.showOnlineCourses ?? true}
+                      onChange={(e) => setMetrics({ ...metrics, showOnlineCourses: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                      data-testid="toggle-show-online-courses"
+                      data-agent-id="toggle-show-online-courses"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {(metrics.showOnlineCourses ?? true) ? 'Visible on Front Page' : 'Hidden'}
+                    </span>
+                  </label>
+
+                  <div className="hidden sm:flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                    {['60+', '100+', '120+', '250+'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMetrics((prev) => ({ ...prev, onlineCourses: val }))}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-blue-50 border border-slate-200 text-blue-700 text-[10px] font-bold cursor-pointer transition"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Custom Label / Title
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.onlineCoursesTitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, onlineCoursesTitle: e.target.value })}
+                    placeholder="Online Courses"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Headline Metric Value
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.onlineCourses || '120+'}
+                    onChange={(e) => setMetrics({ ...metrics, onlineCourses: e.target.value })}
+                    placeholder="e.g. 120+"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Subtitle Description
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.onlineCoursesSubtitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, onlineCoursesSubtitle: e.target.value })}
+                    placeholder="Flexible remote & self-paced credential pathways"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Box 5: Community Courses (NEW) */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              (metrics.showCommunityCourses ?? true)
+                ? 'bg-slate-50 border-slate-200/80 shadow-xs'
+                : 'bg-slate-100/60 border-dashed border-slate-300 opacity-75'
+            } space-y-3`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs">5</div>
+                  <span className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                    <HeartHandshake className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Community Courses Box</span>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer bg-white px-2.5 py-1 rounded-xl border border-slate-200 hover:border-purple-300 transition shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={metrics.showCommunityCourses ?? true}
+                      onChange={(e) => setMetrics({ ...metrics, showCommunityCourses: e.target.checked })}
+                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500 cursor-pointer"
+                      data-testid="toggle-show-community-courses"
+                      data-agent-id="toggle-show-community-courses"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">
+                      {(metrics.showCommunityCourses ?? true) ? 'Visible on Front Page' : 'Hidden'}
+                    </span>
+                  </label>
+
+                  <div className="hidden sm:flex items-center gap-1">
+                    <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                    {['25+', '45+', '60+', '100+'].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setMetrics((prev) => ({ ...prev, communityCourses: val }))}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-purple-50 border border-slate-200 text-purple-700 text-[10px] font-bold cursor-pointer transition"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Custom Label / Title
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.communityCoursesTitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, communityCoursesTitle: e.target.value })}
+                    placeholder="Community Courses"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Headline Metric Value
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.communityCourses || '45+'}
+                    onChange={(e) => setMetrics({ ...metrics, communityCourses: e.target.value })}
+                    placeholder="e.g. 45+"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    Subtitle Description
+                  </label>
+                  <input
+                    type="text"
+                    value={metrics.communityCoursesSubtitle || ''}
+                    onChange={(e) => setMetrics({ ...metrics, communityCoursesSubtitle: e.target.value })}
+                    placeholder="Regional outreach & adult vocational learning"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                   />
                 </div>
               </div>
@@ -549,61 +896,133 @@ export const CampusMetricsManager: React.FC = () => {
           </div>
 
           {/* Hero Simulation Box */}
-          <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-slate-950 border border-slate-800 p-6 sm:p-7 text-white space-y-6">
-            <div className="space-y-2 border-b border-white/10 pb-4">
+          <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-slate-950 border border-slate-800 p-6 sm:p-7 text-white space-y-5">
+            <div className="space-y-1.5 border-b border-white/10 pb-3">
               <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-wider block">
-                Front Page Hero Floating Cards
+                Front Page Hero Floating Cards Preview
               </span>
-              <h4 className="text-base font-extrabold text-white">
+              <h4 className="text-sm font-extrabold text-white">
                 How visitors see your campus stats:
               </h4>
             </div>
 
             {/* Live Front Page Hero Badge Pill */}
-            <div className="p-3.5 bg-slate-900/80 rounded-2xl border border-indigo-500/20 space-y-2">
+            <div className="p-3 bg-slate-900/80 rounded-2xl border border-indigo-500/20 space-y-1.5">
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Live Front Page Hero Notice Pill:
+                Hero Notice Pill:
               </span>
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-600/40 border border-indigo-400/40 text-indigo-200 text-xs font-bold backdrop-blur-md">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-600/40 border border-indigo-400/40 text-indigo-200 text-xs font-bold backdrop-blur-md">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>{metrics.heroBadgeText || 'Your Future is Now • Powered by Gemini'}</span>
               </div>
             </div>
 
-            {/* The 3 Live Floating Boxes */}
-            <div className="space-y-3.5">
+            {/* The 5 Live Floating Boxes */}
+            <div className="space-y-2.5">
               {/* Box 1: Total Students */}
-              <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-4 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
-                <div className="flex items-center gap-2 text-indigo-300 font-extrabold text-lg">
-                  <Users className="w-5 h-5 shrink-0 text-indigo-400" />
-                  <span>{formatStudents(metrics.totalStudents)}</span>
+              {(metrics.showTotalStudents ?? true) ? (
+                <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-3.5 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
+                  <div className="flex items-center gap-2 text-indigo-300 font-extrabold text-base">
+                    <Users className="w-4 h-4 shrink-0 text-indigo-400" />
+                    <span>{formatStudents(metrics.totalStudents, metrics.studentsTitle)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">
+                    {metrics.studentsSubtitle || 'Active learners across all faculties'}
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-300">
-                  {metrics.studentsSubtitle || 'Active learners across all faculties'}
-                </p>
-              </div>
+              ) : (
+                <div className="p-2.5 bg-slate-900/40 border border-dashed border-slate-700/60 rounded-xl text-slate-500 text-[11px] flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{metrics.studentsTitle || 'Total Students'}</span>
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Hidden</span>
+                </div>
+              )}
 
               {/* Box 2: Placement */}
-              <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-4 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
-                <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-lg">
-                  <TrendingUp className="w-5 h-5 shrink-0 text-emerald-400" />
-                  <span>{formatPlacement(metrics.placementRate)}</span>
+              {(metrics.showPlacementRate ?? true) ? (
+                <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-3.5 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
+                  <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-base">
+                    <TrendingUp className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span>{formatPlacement(metrics.placementRate, metrics.placementTitle)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">
+                    {metrics.placementSubtitle || 'Graduate employment within 90 days'}
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-300">
-                  {metrics.placementSubtitle || 'Graduate employment within 90 days'}
-                </p>
-              </div>
+              ) : (
+                <div className="p-2.5 bg-slate-900/40 border border-dashed border-slate-700/60 rounded-xl text-slate-500 text-[11px] flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{metrics.placementTitle || 'Graduate Placement'}</span>
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Hidden</span>
+                </div>
+              )}
 
               {/* Box 3: Total Faculty and Admin Staff */}
-              <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-4 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
-                <div className="flex items-center gap-2 text-amber-300 font-extrabold text-lg">
-                  <GraduationCap className="w-5 h-5 shrink-0 text-amber-400" />
-                  <span>{formatFaculty(metrics.facultyStaff)}</span>
+              {(metrics.showFacultyStaff ?? true) ? (
+                <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-3.5 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
+                  <div className="flex items-center gap-2 text-amber-300 font-extrabold text-base">
+                    <GraduationCap className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>{formatFaculty(metrics.facultyStaff, metrics.facultyTitle)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">
+                    {metrics.facultySubtitle || 'Academic educators & operational staff'}
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-300">
-                  {metrics.facultySubtitle || 'Academic educators & operational staff'}
-                </p>
-              </div>
+              ) : (
+                <div className="p-2.5 bg-slate-900/40 border border-dashed border-slate-700/60 rounded-xl text-slate-500 text-[11px] flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{metrics.facultyTitle || 'Faculty & Staff'}</span>
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Hidden</span>
+                </div>
+              )}
+
+              {/* Box 4: Online Courses (NEW) */}
+              {(metrics.showOnlineCourses ?? true) ? (
+                <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-3.5 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
+                  <div className="flex items-center gap-2 text-sky-300 font-extrabold text-base">
+                    <Laptop className="w-4 h-4 shrink-0 text-sky-400" />
+                    <span>{formatOnline(metrics.onlineCourses, metrics.onlineCoursesTitle)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">
+                    {metrics.onlineCoursesSubtitle || 'Flexible remote & self-paced credential pathways'}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-slate-900/40 border border-dashed border-slate-700/60 rounded-xl text-slate-500 text-[11px] flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{metrics.onlineCoursesTitle || 'Online Courses'}</span>
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Hidden</span>
+                </div>
+              )}
+
+              {/* Box 5: Community Courses (NEW) */}
+              {(metrics.showCommunityCourses ?? true) ? (
+                <div className="bg-slate-900/90 backdrop-blur-md border border-white/15 p-3.5 rounded-2xl text-white shadow-xl space-y-1 transform hover:scale-102 transition duration-200">
+                  <div className="flex items-center gap-2 text-purple-300 font-extrabold text-base">
+                    <HeartHandshake className="w-4 h-4 shrink-0 text-purple-400" />
+                    <span>{formatCommunity(metrics.communityCourses, metrics.communityCoursesTitle)}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-tight">
+                    {metrics.communityCoursesSubtitle || 'Regional outreach & adult vocational learning'}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-slate-900/40 border border-dashed border-slate-700/60 rounded-xl text-slate-500 text-[11px] flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{metrics.communityCoursesTitle || 'Community Courses'}</span>
+                  </span>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Hidden</span>
+                </div>
+              )}
             </div>
 
             {/* Micro summary */}

@@ -17,7 +17,7 @@ export default function BuilderPage() {
         tokenBalance={75}
       />
       <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full">
-        <UnifiedCourseBuilder />
+        <UnifiedCourseBuilder currentUserRole={currentRole} />
       </main>
       <Footer />
     </div>

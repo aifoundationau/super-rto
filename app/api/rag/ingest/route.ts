@@ -60,3 +60,32 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Document ID is required to delete' },
+        { status: 400 }
+      );
+    }
+
+    const { deleteDocumentFromStore } = await import('@/lib/rag/vectorStore');
+    await deleteDocumentFromStore(id);
+
+    return NextResponse.json({
+      success: true,
+      message: `Document ${id} and associated vector embeddings successfully deleted.`,
+    });
+  } catch (error: any) {
+    console.error('[/api/rag/ingest DELETE] Error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to delete ingested document' },
+      { status: 500 }
+    );
+  }
+}
+

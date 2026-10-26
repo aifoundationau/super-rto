@@ -39,7 +39,10 @@ import {
   BarChart3,
   LogOut,
   User,
-  Mail
+  Mail,
+  Building2,
+  UploadCloud,
+  RotateCcw
 } from 'lucide-react';
 
 import { ImageManager } from './ImageManager';
@@ -56,10 +59,74 @@ import { ApplicationDetailModal } from './ApplicationDetailModal';
 import { MultilingualRagManager } from './MultilingualRagManager';
 import { BlogInsightsManager } from './BlogInsightsManager';
 import { CampusMetricsManager } from './CampusMetricsManager';
+import { FacultyStaffDirectoryView } from './FacultyStaffDirectoryView';
+import { AdminDriveUploadPanel } from './AdminDriveUploadPanel';
+import { StudentCourseInfoPanel } from '@/components/student/StudentCourseInfoPanel';
+import { MyEnrolmentsPanel } from '@/components/student/MyEnrolmentsPanel';
+import { authenticatedFetch } from '@/lib/firebase/client';
 import { SYSTEM_ROLES, ROLE_DEFINITIONS, normalizeRole, getRoleMeta, isSuperAdmin, isProjectOwnerEmail } from '@/lib/auth/roles';
+import { SystemRole, isTabAccessibleForRole } from '@/lib/auth/permissions';
 import { DualCurrencyTokenPanel } from '@/components/tokens/DualCurrencyTokenPanel';
 import { ComplianceFrameworkSelector } from '@/components/compliance/ComplianceFrameworkSelector';
 import { ClassroomUser } from '@/components/auth/GoogleClassroomLoginModal';
+
+export type AdminTabId =
+  | 'account_profile'
+  | 'campus_metrics'
+  | 'course_builder'
+  | 'compliance'
+  | 'role_permissions'
+  | 'rag_pipeline'
+  | 'blog_insights'
+  | 'api_key'
+  | 'telemetry'
+  | 'staff_messaging'
+  | 'faculty_staff_directory'
+  | 'user_management'
+  | 'applications'
+  | 'sheets_sync'
+  | 'images'
+  | 'classroom'
+  | 'embed_code'
+  | 'events'
+  | 'knowledge'
+  | 'tokens'
+  | 'calendar'
+  | 'drive_upload';
+
+interface AdminTabItem {
+  id: AdminTabId;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: { text: string; bg: string };
+  testId?: string;
+  activeBg: string;
+}
+
+export const ADMIN_TABS: AdminTabItem[] = [
+  { id: 'account_profile', label: 'Account & Profile', icon: User, badge: { text: 'Profile', bg: 'bg-emerald-500 text-white' }, activeBg: 'bg-indigo-600' },
+  { id: 'campus_metrics', label: 'Front Page Metrics', icon: TrendingUp, badge: { text: 'Live Hero', bg: 'bg-amber-500 text-white' }, activeBg: 'bg-amber-600' },
+  { id: 'course_builder', label: 'Course Builder', icon: GraduationCap, badge: { text: 'LMS', bg: 'bg-emerald-500 text-white' }, activeBg: 'bg-indigo-600' },
+  { id: 'compliance', label: 'Compliance Standards', icon: ShieldCheck, badge: { text: 'ASQA/TEQSA', bg: 'bg-emerald-500 text-white' }, activeBg: 'bg-emerald-600' },
+  { id: 'role_permissions', label: 'Role Permissions', icon: ShieldCheck, badge: { text: 'RBAC', bg: 'bg-purple-500 text-white' }, activeBg: 'bg-purple-600' },
+  { id: 'rag_pipeline', label: 'Multilingual RAG', icon: Globe, badge: { text: 'Vector 768d', bg: 'bg-indigo-500 text-white' }, activeBg: 'bg-indigo-600' },
+  { id: 'blog_insights', label: 'Blog & Insights Spot', icon: Sparkles, badge: { text: 'New', bg: 'bg-pink-500 text-white' }, activeBg: 'bg-pink-600' },
+  { id: 'api_key', label: 'API', icon: Key, activeBg: 'bg-indigo-600' },
+  { id: 'telemetry', label: 'AI Telemetry & Diagnosis', icon: Activity, badge: { text: '#ai', bg: 'bg-purple-500/40 text-purple-200' }, activeBg: 'bg-emerald-600' },
+  { id: 'staff_messaging', label: 'Staff Messages', icon: MessageSquare, badge: { text: '2', bg: 'bg-rose-500 text-white' }, activeBg: 'bg-indigo-600' },
+  { id: 'faculty_staff_directory', label: 'Faculty & Staff Directory', icon: Building2, badge: { text: 'New', bg: 'bg-purple-500 text-white' }, activeBg: 'bg-indigo-600', testId: 'tab-faculty-staff-directory' /* data-testid="tab-faculty-staff-directory" */ },
+  { id: 'user_management', label: 'Student & Staff IDs', icon: Users, activeBg: 'bg-indigo-600' },
+  { id: 'applications', label: 'Applications', icon: FileText, activeBg: 'bg-indigo-600' },
+  { id: 'sheets_sync', label: 'Google Sheets (24/7)', icon: Sheet, activeBg: 'bg-emerald-600' },
+  { id: 'images', label: 'Images Folders', icon: ImageIcon, activeBg: 'bg-indigo-600' },
+  { id: 'classroom', label: 'Google Classroom', icon: BookOpen, activeBg: 'bg-indigo-600' },
+  { id: 'embed_code', label: 'Embed on Website', icon: Code, activeBg: 'bg-purple-600' },
+  { id: 'events', label: 'Events & RSVPs', icon: Calendar, activeBg: 'bg-indigo-600' },
+  { id: 'knowledge', label: 'Knowledge & FAQs', icon: HelpCircle, activeBg: 'bg-indigo-600' },
+  { id: 'tokens', label: 'Tokens / Emergency Fund', icon: Coins, activeBg: 'bg-amber-600' },
+  { id: 'calendar', label: 'Google Calendar', icon: Calendar, activeBg: 'bg-indigo-600' },
+  { id: 'drive_upload', label: '📤 Upload', icon: UploadCloud, activeBg: 'bg-indigo-600', testId: 'tab-drive-upload' /* data-testid="tab-drive-upload" */ }
+];
 
 interface AdminDashboardViewProps {
   apiKey?: string;
@@ -83,9 +150,27 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const isAdministration = roleNormalized === 'administration';
   const hasAccess = isSuper || isAdministration;
 
-  const [activeTab, setActiveTab] = useState<'account_profile' | 'campus_metrics' | 'course_builder' | 'compliance' | 'role_permissions' | 'rag_pipeline' | 'blog_insights' | 'api_key' | 'telemetry' | 'staff_messaging' | 'applications' | 'sheets_sync' | 'events' | 'knowledge' | 'embed_code' | 'user_management' | 'images' | 'classroom' | 'tokens' | 'calendar'>(
-    'account_profile'
-  );
+  // Superadmin Role Perspective Impersonation State
+  const [viewAsRole, setViewAsRole] = useState<SystemRole | null>(null);
+  const [showLockedTabs, setShowLockedTabs] = useState<boolean>(false);
+
+  const userOriginalRole = normalizeRole(currentUser?.role) || (isSuper ? 'superadmin' : 'supporter');
+  const effectiveRole: SystemRole = (isSuper && viewAsRole) ? viewAsRole : userOriginalRole;
+  const isPreviewMode = Boolean(isSuper && viewAsRole && viewAsRole !== 'superadmin');
+
+  const [activeTab, setActiveTab] = useState<AdminTabId>('account_profile');
+  const [studentProfileSection, setStudentProfileSection] = useState<'profile' | 'courses'>('courses');
+  const [showStudentCoursesPreview, setShowStudentCoursesPreview] = useState<boolean>(false);
+
+  // When effectiveRole changes, ensure activeTab is still accessible
+  useEffect(() => {
+    if (!isTabAccessibleForRole(activeTab, effectiveRole)) {
+      const firstAccessible = ADMIN_TABS.find((t) => isTabAccessibleForRole(t.id, effectiveRole));
+      setActiveTab(firstAccessible ? firstAccessible.id : 'account_profile');
+    }
+  }, [effectiveRole, activeTab]);
+
+  const accessibleTabsCount = ADMIN_TABS.filter((t) => isTabAccessibleForRole(t.id, effectiveRole)).length;
 
   const [isSyncingRole, setIsSyncingRole] = useState(false);
   const [roleSyncFeedback, setRoleSyncFeedback] = useState<string>('');
@@ -407,200 +492,198 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           )}
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Superadmin Role Perspective Switcher Bar */}
+        {isSuper && (
+          <div
+            className="bg-purple-950/70 border border-purple-400/40 rounded-2xl p-3 sm:p-4 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-inner"
+            data-testid="superadmin-role-switcher-bar"
+            data-agent-id="superadmin-role-switcher-bar"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-purple-500/20 border border-purple-300/40 flex items-center justify-center text-purple-300 shrink-0">
+                <Eye className="w-4 h-4 text-purple-300" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black uppercase tracking-wider text-purple-200">
+                    Superadmin Role Perspective Switcher
+                  </span>
+                  {isPreviewMode ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950 uppercase tracking-wide flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse" />
+                      Previewing as: {ROLE_DEFINITIONS[effectiveRole]?.label || effectiveRole}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/30 text-purple-200 border border-purple-400/30">
+                      Superadmin Master Perspective
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-purple-300/80 mt-0.5 truncate max-w-xl">
+                  Inspect the Admin Panel exactly as seen by other roles. Tabs and permissions filter dynamically.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 flex-wrap sm:flex-nowrap">
+              {/* Role Select Dropdown */}
+              <div className="relative flex-1 sm:w-64">
+                <select
+                  value={viewAsRole || 'superadmin'}
+                  onChange={(e) => {
+                    const selected = e.target.value as SystemRole;
+                    setViewAsRole(selected === 'superadmin' ? null : selected);
+                  }}
+                  data-testid="role-perspective-select"
+                  aria-label="Select Role Perspective to Preview"
+                  className="w-full px-3 py-1.5 bg-purple-900/90 border border-purple-400/50 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                >
+                  <option value="superadmin">👑 Super Admin (Full Unrestricted Access)</option>
+                  <optgroup label="Executive Leadership">
+                    <option value="director">Director (Leadership & Standards)</option>
+                    <option value="chancellor">Chancellor</option>
+                    <option value="president">President</option>
+                    <option value="vice_president">Vice President</option>
+                    <option value="ceo">Chief Executive Officer (CEO)</option>
+                    <option value="coo">Chief Operating Officer (COO)</option>
+                    <option value="cfo">Chief Financial Officer (CFO)</option>
+                  </optgroup>
+                  <optgroup label="Technology & Systems">
+                    <option value="cto">Chief Technology Officer (CTO)</option>
+                    <option value="tech_admin">Technical Administrator</option>
+                    <option value="admin">Administrator (Admin)</option>
+                  </optgroup>
+                  <optgroup label="Operations & Student Support">
+                    <option value="administration">Administration (Registrar & Admissions)</option>
+                    <option value="accounting">Accounting & Finance</option>
+                    <option value="student_counsellor">Student Counsellor</option>
+                  </optgroup>
+                  <optgroup label="Academic & Community">
+                    <option value="teacher">Teacher / Trainer (LMS Author)</option>
+                    <option value="student">Student (Enrolled Learner)</option>
+                    <option value="supporter">Supporter (Public Contributor)</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Show Locked Tabs Toggle */}
+              <button
+                type="button"
+                onClick={() => setShowLockedTabs(!showLockedTabs)}
+                data-testid="toggle-locked-tabs-btn"
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  showLockedTabs
+                    ? 'bg-purple-800 text-purple-100 border-purple-400 shadow-xs'
+                    : 'bg-purple-950/50 text-purple-300/80 border-purple-500/30 hover:text-white'
+                }`}
+                title="Toggle visibility of restricted/locked tabs for this role"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>{showLockedTabs ? 'Hide Locked' : 'Show Locked'}</span>
+              </button>
+
+              {/* Reset to Superadmin Button */}
+              {viewAsRole && (
+                <button
+                  type="button"
+                  onClick={() => setViewAsRole(null)}
+                  data-testid="reset-role-perspective-btn"
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-sm cursor-pointer whitespace-nowrap flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation Tabs (Dynamically Filtered by Effective Role) */}
         <div className="flex flex-wrap items-center gap-1.5 bg-white/10 p-1.5 rounded-2xl">
-          <button
-            onClick={() => setActiveTab('account_profile')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'account_profile' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <User className="w-3.5 h-3.5 text-indigo-300" />
-            <span>Account & Profile</span>
-            <span className="px-1.5 py-0.2 bg-emerald-500 text-white text-[9px] font-extrabold rounded-full">Profile</span>
-          </button>
+          {ADMIN_TABS.map((tab) => {
+            const isAccessible = isTabAccessibleForRole(tab.id, effectiveRole);
+            if (!isAccessible && !showLockedTabs) {
+              return null;
+            }
+            const Icon = tab.icon;
+            const isCurrent = activeTab === tab.id;
 
-          <button
-            onClick={() => setActiveTab('campus_metrics')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'campus_metrics' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5 text-amber-300" />
-            <span>Front Page Metrics</span>
-            <span className="px-1.5 py-0.2 bg-amber-500 text-white text-[9px] font-extrabold rounded-full">Live Hero</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('course_builder')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'course_builder' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <GraduationCap className="w-4 h-4 text-indigo-300" />
-            <span>Course Builder</span>
-            <span className="px-1.5 py-0.2 bg-emerald-500 text-white text-[9px] font-extrabold rounded-full">LMS</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('compliance')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'compliance' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
-            <span>Compliance Standards</span>
-            <span className="px-1.5 py-0.2 bg-emerald-500 text-white text-[9px] font-extrabold rounded-full">ASQA/TEQSA</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('role_permissions')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'role_permissions' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
-            <span>Role Permissions</span>
-            <span className="px-1.5 py-0.2 bg-purple-500 text-white text-[9px] font-extrabold rounded-full">RBAC</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('rag_pipeline')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'rag_pipeline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Globe className="w-3.5 h-3.5 text-indigo-300" />
-            <span>Multilingual RAG</span>
-            <span className="px-1.5 py-0.2 bg-indigo-500 text-white text-[9px] font-extrabold rounded-full">Vector 768d</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('blog_insights')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'blog_insights' ? 'bg-pink-600 text-white shadow-md' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-pink-300" />
-            <span>Blog & Insights Spot</span>
-            <span className="px-1.5 py-0.2 bg-pink-500 text-white text-[9px] font-extrabold rounded-full">New</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('api_key')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'api_key' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Key className="w-3.5 h-3.5" />
-            <span>API</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('telemetry')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'telemetry' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5 text-emerald-300" />
-            <span>AI Telemetry & Diagnosis</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-purple-500/40 text-purple-200 text-[9px] font-mono font-bold">
-              #ai
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('staff_messaging')}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === 'staff_messaging' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-indigo-300" />
-            <span>Staff Messages</span>
-            <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[9px] font-extrabold rounded-full">2</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('user_management')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'user_management' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>Student & Staff IDs ({users.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('applications')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'applications' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            Applications ({applications.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('sheets_sync')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'sheets_sync' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Sheet className="w-3.5 h-3.5" />
-            <span>Google Sheets (24/7)</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('images')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'images' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <ImageIcon className="w-3.5 h-3.5" />
-            <span>Images Folders</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('classroom')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'classroom' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Google Classroom</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('embed_code')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'embed_code' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Code className="w-3.5 h-3.5" />
-            <span>Embed on Website</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'events' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            Events & RSVPs
-          </button>
-          <button
-            onClick={() => setActiveTab('knowledge')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeTab === 'knowledge' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            Knowledge & FAQs ({faqsCount})
-          </button>
-          <button
-            onClick={() => setActiveTab('tokens')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'tokens' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Coins className="w-3.5 h-3.5" />
-            <span>Tokens / Emergency Fund</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('calendar')}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'calendar' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-300 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Google Calendar</span>
-          </button>
+            if (!isAccessible) {
+              return (
+                <div
+                  key={tab.id}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 opacity-40 bg-white/5 border border-dashed border-white/20 text-slate-400 cursor-not-allowed select-none"
+                  title={`Restricted: Not accessible under role '${effectiveRole.toUpperCase()}'`}
+                >
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="line-through">{tab.label}</span>
+                  <span className="px-1.5 py-0.2 bg-slate-700 text-slate-300 text-[9px] font-mono rounded-full">
+                    Locked
+                  </span>
+                </div>
+              );
+            }
 
+            let label = tab.label;
+            if (tab.id === 'user_management') label = `Student & Staff IDs (${users.length})`;
+            if (tab.id === 'applications') label = `Applications (${applications.length})`;
+            if (tab.id === 'knowledge') label = `Knowledge & FAQs (${FAQS_DATA.length})`;
+
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                data-testid={tab.testId || `tab-${tab.id.replace(/_/g, '-')}`}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  isCurrent ? `${tab.activeBg} text-white shadow-md ring-2 ring-white/20` : 'text-slate-300 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{label}</span>
+                {tab.badge && (
+                  <span className={`px-1.5 py-0.2 text-[9px] font-extrabold rounded-full ${tab.badge.bg}`}>
+                    {tab.badge.text}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Role Preview Active Banner */}
+      {isPreviewMode && (
+        <div
+          className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 sm:p-4 text-xs text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in"
+          data-testid="role-preview-active-banner"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold">
+              👁️
+            </div>
+            <div>
+              <p className="font-bold text-amber-950">
+                Role Preview Mode Active: Viewing Admin Panel as{' '}
+                <span className="underline decoration-amber-500 font-extrabold">
+                  {ROLE_DEFINITIONS[effectiveRole]?.label || effectiveRole}
+                </span>{' '}
+                ({ROLE_DEFINITIONS[effectiveRole]?.category} Tier, Hierarchy Level {ROLE_DEFINITIONS[effectiveRole]?.hierarchyLevel}).
+              </p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                Showing {accessibleTabsCount} accessible tabs out of {ADMIN_TABS.length}. All restricted tabs and capabilities are gated according to ASQA/TEQSA institutional governance.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setViewAsRole(null)}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs cursor-pointer shrink-0"
+          >
+            Exit Preview & Return to Superadmin &rarr;
+          </button>
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -678,8 +761,51 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             )}
           </div>
 
-          {/* User Identity Card */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Student Role Section Switcher */}
+          {effectiveRole === 'student' && (
+            <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+              <button
+                type="button"
+                data-testid="student-tab-courses"
+                onClick={() => setStudentProfileSection('courses')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  studentProfileSection === 'courses'
+                    ? 'bg-white text-indigo-900 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <BookOpen className="w-4 h-4 text-indigo-600" />
+                <span>My Courses & Enrolled Units</span>
+                <span className="px-2 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded-full font-bold">
+                  Curriculum Hub
+                </span>
+              </button>
+              <button
+                type="button"
+                data-testid="student-tab-profile"
+                onClick={() => setStudentProfileSection('profile')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  studentProfileSection === 'profile'
+                    ? 'bg-white text-indigo-900 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <User className="w-4 h-4 text-indigo-600" />
+                <span>Student Identity & Credentials</span>
+              </button>
+            </div>
+          )}
+
+          {!isPreviewMode && <MyEnrolmentsPanel />}
+
+          {effectiveRole === 'student' && studentProfileSection === 'courses' ? (
+            <div className="space-y-4 pt-2">
+              <StudentCourseInfoPanel />
+            </div>
+          ) : (
+            <>
+              {/* User Identity Card */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1 p-6 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-4 text-center sm:text-left">
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 <div className="relative">
@@ -857,8 +983,44 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               </div>
             </div>
           </div>
-        </div>
+
+          {/* Staff / Admin Preview of Student Course View */}
+          {effectiveRole !== 'student' && (
+            <div className="pt-4 border-t border-slate-200">
+              <div className="p-5 bg-gradient-to-r from-indigo-50/70 to-purple-50/70 rounded-2xl border border-indigo-200/80 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold text-xs text-indigo-950 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-indigo-600" />
+                      <span>Student-Facing Courses & Enrolled Units (Course Builder Blueprint)</span>
+                    </h4>
+                    <p className="text-[11px] text-indigo-800/80 mt-0.5">
+                      Inspect the exact curriculum, units of competency, weekly lesson plans, and 5-level AQF rubrics presented to enrolled students in their portal.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="preview-student-courses-btn"
+                    onClick={() => setShowStudentCoursesPreview(!showStudentCoursesPreview)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{showStudentCoursesPreview ? 'Hide Student Course View' : 'Preview Student Course View'}</span>
+                  </button>
+                </div>
+
+                {showStudentCoursesPreview && (
+                  <div className="pt-3 border-t border-indigo-200/60 animate-in fade-in">
+                    <StudentCourseInfoPanel />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
+    </div>
+  )}
 
       {/* Tab: Front Page Campus Metrics Manager */}
       {activeTab === 'campus_metrics' && (
@@ -867,7 +1029,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
       {/* Tab: Course Builder (LMS & Website) */}
       {activeTab === 'course_builder' && (
-        <CourseBuilderView apiKey={apiKeys.gemini} />
+        <CourseBuilderView apiKey={apiKeys.gemini} currentUserRole={effectiveRole} /* <CourseBuilderView apiKey={apiKeys.gemini} /> */ />
       )}
 
       {/* Tab: Compliance & Accreditation Frameworks (ASQA & TEQSA default) */}
@@ -1233,6 +1395,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       )}
 
+      {/* Tab: Faculty & Staff Directory Admin */}
+      {activeTab === 'faculty_staff_directory' && (
+        <FacultyStaffDirectoryView />
+      )}
+
       {/* Tab: Embed on Website Code Generator */}
       {activeTab === 'embed_code' && (
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 sm:p-8 space-y-6">
@@ -1295,7 +1462,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <h3 className="font-bold text-slate-900 text-lg">Google Sheets 24/7 Live Course & Unit Editor</h3>
               </div>
               <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-                Allow university faculty and academic coordinators to edit course descriptions, entry requirements, unit syllabuses, prerequisites, and lecture schedules in Google Sheets 24/7. The AI Agent and course finder will instantly read updates!
+                Allow university faculty and academic coordinators to edit course descriptions, entry requirements, unit syllabi, prerequisites, and lecture schedules in Google Sheets 24/7. The AI Agent and course finder will instantly read updates!
               </p>
             </div>
 
@@ -1356,7 +1523,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               Download Starter Google Sheet CSV Templates:
             </h4>
             <p className="text-xs text-slate-500">
-              Download these pre-formatted CSV files with sample university courses, unit syllabuses, and FAQs. Open them in Google Sheets to start editing immediately:
+              Download these pre-formatted CSV files with sample university courses, unit syllabi, and FAQs. Open them in Google Sheets to start editing immediately:
             </p>
             <div className="flex flex-wrap gap-2.5 pt-1">
               <button
@@ -1371,7 +1538,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Download Unit Syllabuses Template (.csv)</span>
+                <span>Download Unit Syllabi Template (.csv)</span>
               </button>
               <button
                 onClick={() => handleDownloadTemplate('faqs')}
@@ -1644,6 +1811,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
                               : app.status === 'Accepted'
                               ? 'bg-purple-50 text-purple-700 border-purple-200'
+                              : app.status === 'Enrolled'
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                               : app.status === 'Requires Additional Documents'
                               ? 'bg-amber-50 text-amber-700 border-amber-200'
                               : 'bg-slate-100 text-slate-700 border-slate-200'
@@ -1696,6 +1865,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           ? 'bg-blue-50 text-blue-700 border-blue-200'
                           : app.status === 'Accepted'
                           ? 'bg-purple-50 text-purple-700 border-purple-200'
+                          : app.status === 'Enrolled'
+                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                           : 'bg-amber-50 text-amber-700 border-amber-200'
                       }`}>
                         {app.status}
@@ -1931,6 +2102,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       )}
       {/* Tab: Google Calendar */}
       {activeTab === 'calendar' && <AdminCalendarManager />}
+      {/* Tab: Google Drive Upload */}
+      {activeTab === 'drive_upload' && (
+        <AdminDriveUploadPanel
+          currentUserEmail={currentUser?.email}
+          onToast={(msg) => console.log('[AdminDriveUpload]', msg)}
+        />
+      )}
     </div>
   );
 };

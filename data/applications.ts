@@ -27,7 +27,7 @@ export interface WorkHistoryItem {
 
 export interface StudentApplication {
   id: string; // e.g. 'APP-2026-88192'
-  status: 'Draft' | 'Submitted' | 'Under Review' | 'Accepted' | 'Requires Additional Documents';
+  status: 'Draft' | 'Submitted' | 'Under Review' | 'Accepted' | 'Enrolled' | 'Requires Additional Documents';
   createdAt: string;
   updatedAt: string;
 
@@ -104,6 +104,9 @@ export interface DocumentAuthenticityAudit {
   legitimacyNotes: string; // Forensic analysis of security seals, crests, fonts, and authenticity
   verifiedAt: string;
   filename?: string;
+  driveFileId?: string;
+  driveFileUrl?: string;
+  driveFolderPath?: string;
 }
 
 export const INITIAL_APPLICATION_STATE: StudentApplication = {

@@ -107,7 +107,7 @@ export async function processAgentConversation(
     return {
       message: `I couldn't find **${unitCodeTokens[0]}** in the AI assistant's unit syllabus database.\n\n` +
         `Units I can describe in detail: ${allUnits.map(u => `**${u.code}**`).join(', ')}.\n\n` +
-        `You can also browse the **Unit Syllabuses** tab for the full published list.`,
+        `You can also browse the **Unit Syllabi** tab for the full published list.`,
       toolsExecuted,
       uiWidgets,
       updatedApplication: updatedApp
@@ -206,7 +206,7 @@ export async function processAgentConversation(
       `- **Campuses**: ${courseMatch.campus.join(', ')}\n\n` +
       `#### 🚀 Majors & Specializations\n${majorsList}\n\n` +
       `#### 💼 Career Outcomes\n${careersList}\n\n` +
-      `Would you like to explore unit syllabuses for this degree (e.g. **${courseMatch.coreUnits.slice(0, 3).join(', ')}**), register for an Open Day, or start your student application?`;
+      `Would you like to explore unit syllabi for this degree (e.g. **${courseMatch.coreUnits.slice(0, 3).join(', ')}**), register for an Open Day, or start your student application?`;
 
     return {
       message: responseText,
@@ -706,7 +706,7 @@ async function callGeminiWithTools(
       text: `You are EduPulse AI, an intelligent, empathetic, and highly capable university admissions, course, and RTO compliance assistant.
 Your job is to answer prospective and current student inquiries accurately:
 - Use 'query_multilingual_rag' to retrieve authoritative institutional documents, TEQSA/ASQA/CRICOS standards, course architectures, and knowledge in any language (Japanese, Chinese, Vietnamese, Thai, English, etc.).
-- Provide rich details on courses (degrees) and individual unit syllabuses (prerequisites, assessment breakdowns, weekly topics).
+- Provide rich details on courses (degrees) and individual unit syllabi (prerequisites, assessment breakdowns, weekly topics).
 - Help students fill in their application forms progressively.
 - Register prospective students for upcoming admissions events and 1-on-1 consultations with Google Calendar invites.
 - Answer university FAQs regarding scholarships, tuition, visas, accommodation, deadlines, and campus life.

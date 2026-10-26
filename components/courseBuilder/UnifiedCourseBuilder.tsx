@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Layers,
   Plus,
@@ -69,18 +69,28 @@ import {
   createDefaultRubricLevels,
   createFormativeRubricLevels,
   createSummativeRubricLevels,
-  parseCsvLine,
-  generateRubricsTemplateCsv,
-  exportAssessmentsToCsv,
-  parseRubricsCsv
+  parseCsvLine
 } from '@/lib/courseBuilder/rubrics';
+import {
+  generateShortCourseTemplateCsv,
+  generateSemesterCourseTemplateCsv,
+  parseCourseCsv,
+  exportCourseToCsv
+} from '@/lib/courseBuilder/courseCsv';
 import {
   createDefaultUnit,
   deleteUnitFromCourse,
   UnitPerformanceCriterion,
   createDefaultPerformanceCriteria,
-  createPerformanceCriterion
+  createPerformanceCriterion,
+  getUniqueElementsFromUnit,
+  addElementToUnit,
+  addCriterionToElement
 } from '@/lib/courseBuilder/units';
+import {
+  saveUnitToSyllabiBank,
+  syncAllUnitsToSyllabiBank
+} from '@/lib/courseBuilder/unitBank';
 import {
   ProgramAdmissionsProfile,
   createDefaultAdmissionsProfile
@@ -92,6 +102,10 @@ import {
   createDefaultFacultyInfo
 } from '@/lib/courseBuilder/faculty';
 import { FacultyInfoPanel } from './FacultyInfoPanel';
+import { StudentCourseInfoPanel } from '@/components/student/StudentCourseInfoPanel';
+import { UnitStudentEnrolmentPanel } from './UnitStudentEnrolmentPanel';
+import type { UnitEnrolledStudent } from '@/lib/courseBuilder/studentEnrolment';
+import { createDefaultEnrolledStudents } from '@/lib/courseBuilder/studentEnrolment';
 
 export type {
   RubricLevel,
@@ -101,7 +115,8 @@ export type {
   AssessmentSortOption,
   ProgramAdmissionsProfile,
   CourseFacultyInfo,
-  FacultyStaffMember
+  FacultyStaffMember,
+  UnitEnrolledStudent
 };
 export { DEFAULT_RUBRIC_LEVEL_NAMES, createDefaultRubricLevels, parseCsvLine, sortAssessments, reorderAssessment };
 
@@ -120,6 +135,7 @@ export interface CourseUnit {
     blocks: LessonBlock[];
   }[];
   assessments: CourseAssessment[];
+  enrolledStudents?: UnitEnrolledStudent[];
 }
 
 export interface CourseData {
@@ -299,12 +315,23 @@ const DEFAULT_COURSE: CourseData = {
             }
           ]
         }
-      ]
+      ],
+      enrolledStudents: createDefaultEnrolledStudents('BSB41419', 'BSBWHS411')
     }
   ]
 };
 
-export const UnifiedCourseBuilder: React.FC = () => {
+export interface UnifiedCourseBuilderProps {
+  currentUserRole?: string;
+  onNavigateToCourses?: () => void;
+}
+
+export const UnifiedCourseBuilder: React.FC<UnifiedCourseBuilderProps> = ({
+  currentUserRole,
+  onNavigateToCourses
+}) => {
+  const isStudent = (currentUserRole || '').toLowerCase() === 'student';
+
   const [course, setCourse] = useState<CourseData>(DEFAULT_COURSE);
   const [activeUnitIndex, setActiveUnitIndex] = useState<number>(0);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
@@ -320,8 +347,10 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [selectedAssessmentCategory, setSelectedAssessmentCategory] = useState<
     'summative_exam' | 'formative_exam' | 'formative' | 'summative'
   >('summative_exam');
+  const courseCsvInputRef = useRef<HTMLInputElement>(null);
+  const [deletingElementTitle, setDeletingElementTitle] = useState<string | null>(null);
+  const [selectedElementFilter, setSelectedElementFilter] = useState<string>('ALL');
   const [assessmentSortOption, setAssessmentSortOption] = useState<AssessmentSortOption>('exam_number_asc');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Collapsible view state across all course builder layers
   const [isCourseMetaCollapsed, setIsCourseMetaCollapsed] = useState(false);
@@ -331,6 +360,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const [isUnitInfoCollapsed, setIsUnitInfoCollapsed] = useState(false);
   const [isLessonsSectionCollapsed, setIsLessonsSectionCollapsed] = useState(false);
   const [isAssessmentsSectionCollapsed, setIsAssessmentsSectionCollapsed] = useState(false);
+  const [isEnrolledStudentsCollapsed, setIsEnrolledStudentsCollapsed] = useState(false);
   const [collapsedLessonIds, setCollapsedLessonIds] = useState<Record<string, boolean>>({});
   const [collapsedBlockIds, setCollapsedBlockIds] = useState<Record<string, boolean>>({});
   const [collapsedAssessmentIds, setCollapsedAssessmentIds] = useState<Record<string, boolean>>({});
@@ -339,6 +369,13 @@ export const UnifiedCourseBuilder: React.FC = () => {
   const toggleLessonCollapse = (id: string) => {
     setCollapsedLessonIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
+
+  // Sync course units to Unit Syllabi bank on mount
+  useEffect(() => {
+    if (course.units && course.units.length > 0) {
+      syncAllUnitsToSyllabiBank(course.units, course.code, course.title);
+    }
+  }, []);
 
   const toggleBlockCollapse = (id: string) => {
     setCollapsedBlockIds((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -358,6 +395,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setIsAdmissionsPanelCollapsed(true);
     setIsPerformanceCriteriaCollapsed(true);
     setIsUnitInfoCollapsed(true);
+    setIsEnrolledStudentsCollapsed(true);
     setIsLessonsSectionCollapsed(false);
     setIsAssessmentsSectionCollapsed(false);
 
@@ -385,7 +423,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setCollapsedBlockIds(blockMap);
     setCollapsedAssessmentIds(assMap);
     setCollapsedCriterionIds(critMap);
-    setStatusMessage('All sections, lessons, elements, and rubrics collapsed.');
+    setStatusMessage('All sections, lessons, elements, enrolments, and rubrics collapsed.');
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
@@ -395,13 +433,14 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setIsAdmissionsPanelCollapsed(false);
     setIsPerformanceCriteriaCollapsed(false);
     setIsUnitInfoCollapsed(false);
+    setIsEnrolledStudentsCollapsed(false);
     setIsLessonsSectionCollapsed(false);
     setIsAssessmentsSectionCollapsed(false);
     setCollapsedLessonIds({});
     setCollapsedBlockIds({});
     setCollapsedAssessmentIds({});
     setCollapsedCriterionIds({});
-    setStatusMessage('All sections, lessons, elements, and rubrics expanded.');
+    setStatusMessage('All sections, lessons, elements, enrolments, and rubrics expanded.');
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
@@ -431,11 +470,15 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
   const handleAddUnit = () => {
     const newUnit = createDefaultUnit('NEWUNIT', 'New Unit of Competency');
+    const updatedUnits = [...course.units, newUnit];
     setCourse({
       ...course,
-      units: [...course.units, newUnit]
+      units: updatedUnits
     });
     setActiveUnitIndex(course.units.length);
+    saveUnitToSyllabiBank(newUnit, course.code, course.title);
+    setStatusMessage(`✨ Created unit "${newUnit.unitCode}" and added to Unit Syllabi bank.`);
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
   const handleDeleteUnit = (unitIdx: number) => {
@@ -453,24 +496,61 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
-  const handleAddPerformanceCriterion = (unitIdx: number = activeUnitIndex) => {
+  const handleAddPerformanceCriterion = (unitIdx: number = activeUnitIndex, targetElement?: string) => {
+    const targetUnit = course.units[unitIdx];
+    if (!targetUnit) return;
+    const element = targetElement || (targetUnit.performanceCriteria && targetUnit.performanceCriteria.length > 0
+      ? targetUnit.performanceCriteria[targetUnit.performanceCriteria.length - 1].element
+      : 'Element 1: Core Performance Requirements');
+    
+    const { updatedUnit, newCriterion } = addCriterionToElement(targetUnit, element);
     const updated = [...course.units];
-    const targetUnit = updated[unitIdx];
-    if (!targetUnit.performanceCriteria) {
-      targetUnit.performanceCriteria = [];
-    }
-    const pcCount = targetUnit.performanceCriteria.length + 1;
-    const newCriterion: UnitPerformanceCriterion = {
-      id: `pc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      element: 'Element 1: Core Performance Requirements',
-      code: `1.${pcCount}`,
-      title: `Performance Criterion 1.${pcCount}`,
-      description: 'Satisfies unit benchmark and performance requirements in an industry workplace environment.'
-    };
-    targetUnit.performanceCriteria.push(newCriterion);
+    updated[unitIdx] = updatedUnit;
     setCourse({ ...course, units: updated });
-    setStatusMessage(`✨ Added Performance Criterion 1.${pcCount}.`);
+    setStatusMessage(`✨ Added Performance Criterion ${newCriterion.code} to "${element}".`);
     setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleAddElement = (unitIdx: number = activeUnitIndex) => {
+    const targetUnit = course.units[unitIdx];
+    if (!targetUnit) return;
+    const { updatedUnit, newCriterion } = addElementToUnit(targetUnit);
+    const updated = [...course.units];
+    updated[unitIdx] = updatedUnit;
+    setCourse({ ...course, units: updated });
+    setStatusMessage(`✨ Added new Element of Competency: "${newCriterion.element}".`);
+    setTimeout(() => setStatusMessage(null), 3500);
+  };
+
+  const handleAddCriterionToSpecificElement = (unitIdx: number, elementTitle: string) => {
+    const targetUnit = course.units[unitIdx];
+    if (!targetUnit) return;
+    const { updatedUnit, newCriterion } = addCriterionToElement(targetUnit, elementTitle);
+    const updated = [...course.units];
+    updated[unitIdx] = updatedUnit;
+    setCourse({ ...course, units: updated });
+    setStatusMessage(`✨ Added Performance Criterion ${newCriterion.code} to "${elementTitle}".`);
+    setTimeout(() => setStatusMessage(null), 3000);
+  };
+
+  const handleDeleteElement = (unitIdx: number, elementTitle: string) => {
+    const targetUnit = course.units[unitIdx];
+    if (!targetUnit || !targetUnit.performanceCriteria) return;
+    const filteredCriteria = targetUnit.performanceCriteria.filter(
+      (c) => (c.element || '').trim().toLowerCase() !== elementTitle.trim().toLowerCase()
+    );
+    if (filteredCriteria.length === 0) {
+      filteredCriteria.push(createPerformanceCriterion('Element 1: Core Performance Requirements', '1.1'));
+    }
+    const updated = [...course.units];
+    updated[unitIdx] = {
+      ...targetUnit,
+      performanceCriteria: filteredCriteria
+    };
+    setCourse({ ...course, units: updated });
+    setDeletingElementTitle(null);
+    setStatusMessage(`Element of Competency "${elementTitle}" and its criteria deleted.`);
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
   const handleDeletePerformanceCriterion = (unitIdx: number, critId: string) => {
@@ -630,18 +710,157 @@ export const UnifiedCourseBuilder: React.FC = () => {
   };
 
   const handleAiIngest = () => {
-    if (!aiSyllabusInput.trim()) return;
+    // Deduct 10 tokens atomically via Firebase Token Backend
+    fetch('/api/tokens/spend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tokens: 10,
+        action: 'AI_COURSE_SYNTHESIS',
+        reason: 'Synthesize curriculum and competency elements via AI Ingest'
+      })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success) {
+          window.dispatchEvent(
+            new CustomEvent('super_rto_tokens_updated', {
+              detail: { remainingBalance: data.remainingBalance }
+            })
+          );
+        }
+      })
+      .catch((err) => console.warn('[AI Ingest] Token deduction offline fallback:', err));
 
+    // 1. If user pasted CSV data directly into AI modal
+    if (
+      aiSyllabusInput.includes('RecordType') ||
+      aiSyllabusInput.includes('COURSE,') ||
+      aiSyllabusInput.includes('UNIT,') ||
+      aiSyllabusInput.includes('ELEMENT_CRITERION')
+    ) {
+      try {
+        const parsed = parseCourseCsv(aiSyllabusInput);
+        if (parsed.units && parsed.units.length > 0) {
+          syncAllUnitsToSyllabiBank(parsed.units, parsed.code || course.code, parsed.title || course.title);
+          setCourse({
+            ...course,
+            title: parsed.title || course.title,
+            code: parsed.code || course.code,
+            units: parsed.units,
+            description: `Synthesized via AI Course Builder (${parsed.durationWeeks}-week curriculum with ${parsed.units.length} units and multiple elements).`
+          });
+          setActiveUnitIndex(0);
+          setIsAiModalOpen(false);
+          setStatusMessage(`✨ Synthesized course from CSV (${parsed.units.length} units synced to Unit Syllabi bank, 10 tokens applied).`);
+          setTimeout(() => setStatusMessage(null), 4000);
+          return;
+        }
+      } catch (err) {
+        console.warn('AI Ingest CSV fallback to text parser:', err);
+      }
+    }
+
+    // 2. Structured text parsing with multiple elements per unit
     const lines = aiSyllabusInput.split('\n');
     let title = course.title;
     let code = course.code;
+    let durationWeeks = 4;
+    const parsedUnits: CourseUnit[] = [];
+    let currentUnit: CourseUnit | null = null;
+    let currentElement = 'Element 1: Core Performance Requirements';
 
-    for (const line of lines) {
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
       if (line.toUpperCase().startsWith('COURSE TITLE:')) {
         title = line.replace(/COURSE TITLE:/i, '').trim();
-      }
-      if (line.toUpperCase().startsWith('COURSE CODE:')) {
+      } else if (line.toUpperCase().startsWith('COURSE CODE:')) {
         code = line.replace(/COURSE CODE:/i, '').trim();
+      } else if (line.toUpperCase().startsWith('DURATION:') || line.toUpperCase().startsWith('DURATION WEEKS:')) {
+        const parsedWeeks = parseInt(line.replace(/[^0-9]/g, ''), 10);
+        if (!isNaN(parsedWeeks) && parsedWeeks > 0) durationWeeks = parsedWeeks;
+      } else if (line.toUpperCase().startsWith('UNIT')) {
+        const unitMatch =
+          line.match(/UNIT\s*\d*\s*:\s*([A-Za-z0-9_-]+)\s*-\s*(.+)/i) ||
+          line.match(/UNIT\s*\d*\s*:\s*(.+)/i);
+        const uCode = unitMatch && unitMatch[2] ? unitMatch[1].trim() : `UNIT${parsedUnits.length + 101}`;
+        const uTitle =
+          unitMatch && unitMatch[2]
+            ? unitMatch[2].replace(/\(.*?\)/g, '').trim()
+            : unitMatch
+            ? unitMatch[1].trim()
+            : `Unit ${parsedUnits.length + 1}`;
+
+        currentUnit = {
+          id: `unit-${Date.now()}-${parsedUnits.length + 1}`,
+          unitCode: uCode,
+          unitTitle: uTitle,
+          nominalHours: 40,
+          description: `ASQA/TEQSA aligned unit of competency: ${uTitle}`,
+          performanceCriteria: [],
+          lessons: [],
+          assessments: []
+        };
+        parsedUnits.push(currentUnit);
+        currentElement = 'Element 1: Core Performance Requirements';
+      } else if (line.toUpperCase().startsWith('ELEMENT') && currentUnit) {
+        currentElement = line.replace(/^[*-]\s*/, '').trim();
+        const elemNumMatch = currentElement.match(/Element\s*(\d+)/i);
+        const elemNum = elemNumMatch ? elemNumMatch[1] : `${(currentUnit.performanceCriteria?.length || 0) + 1}`;
+        if (!currentUnit.performanceCriteria) currentUnit.performanceCriteria = [];
+        currentUnit.performanceCriteria.push({
+          id: `pc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          element: currentElement,
+          code: `${elemNum}.1`,
+          title: `Apply principles of ${currentElement.replace(/^Element\s*\d+\s*:\s*/i, '')}`,
+          description: `Satisfies competency benchmark and workplace evidence standards for ${currentElement}.`
+        });
+      } else if (line.toUpperCase().startsWith('LESSON') && currentUnit) {
+        const lessonTitle = line.replace(/LESSON\s*\d*\s*:\s*/i, '').trim();
+        currentUnit.lessons.push({
+          id: `les-${Date.now()}-${currentUnit.lessons.length + 1}`,
+          title: lessonTitle,
+          estimatedMinutes: 45,
+          blocks: [
+            {
+              id: `blk-${Date.now()}-1`,
+              type: 'presentation',
+              title: `${lessonTitle} Courseware`,
+              url: 'https://docs.google.com/presentation/d/demo-courseware'
+            }
+          ]
+        });
+      } else if (
+        (line.toUpperCase().startsWith('ASSESSMENT') ||
+          line.toUpperCase().includes('SUMMATIVE') ||
+          line.toUpperCase().includes('FORMATIVE')) &&
+        currentUnit
+      ) {
+        const isFormative = line.toUpperCase().includes('FORMATIVE');
+        const type: 'formative' | 'summative' = isFormative ? 'formative' : 'summative';
+        const assTitle = line.replace(/^[A-Z\s]+:\s*/, '').trim() || `${isFormative ? 'Formative' : 'Summative'} Assessment`;
+        const critTitle = isFormative ? 'Foundational Knowledge Application' : 'Core Industry Competency & Evidence';
+        const levels = isFormative ? createFormativeRubricLevels(critTitle) : createSummativeRubricLevels(critTitle);
+
+        currentUnit.assessments.push({
+          id: `ass-${type}-${Date.now()}-${currentUnit.assessments.length + 1}`,
+          type,
+          title: assTitle,
+          description: `Rigorous assessment evaluating ${critTitle} against performance benchmarks.`,
+          examNumber: currentUnit.assessments.length + 1,
+          criteria: [
+            {
+              id: `crit-${Date.now()}-1`,
+              name: critTitle,
+              weight: 100,
+              competentDescriptor: 'Consistently meets required competency benchmark with verified practical evidence.',
+              notYetCompetentDescriptor: 'Does not yet meet benchmark requirements; gaps identified in foundational knowledge.',
+              levels
+            }
+          ]
+        });
       }
     }
 
@@ -649,8 +868,14 @@ export const UnifiedCourseBuilder: React.FC = () => {
       ...course,
       title,
       code,
-      description: `Imported via AI Ingest engine. Parsed syllabus into ASQA & TEQSA structured units.`
+      units: parsedUnits.length > 0 ? parsedUnits : course.units,
+      description: `Synthesized via AI Ingest engine grounded in course-builder-assistant skill (${durationWeeks}-week curriculum).`
     });
+
+    if (parsedUnits.length > 0) {
+      syncAllUnitsToSyllabiBank(parsedUnits, code, title);
+      setActiveUnitIndex(0);
+    }
 
     setIsAiModalOpen(false);
     setStatusMessage('✨ Course successfully synthesized with AI Ingest (10 tokens applied).');
@@ -872,33 +1097,53 @@ export const UnifiedCourseBuilder: React.FC = () => {
     setDeletingCriterionId(null);
   };
 
-  const handleDownloadCsvTemplate = () => {
-    const csvContent = generateRubricsTemplateCsv();
+  const handleDownloadShortCourseCsv = () => {
+    const csvContent = generateShortCourseTemplateCsv();
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'assessments_rubrics_5levels_template.csv');
+    link.href = url;
+    link.setAttribute('download', 'super-rto-short-course-template-1-4weeks.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    setStatusMessage('📥 Downloaded Short Course CSV Template (1–4 Weeks with Multiple Elements).');
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
-  const handleExportCurrentRubricsCsv = () => {
-    const csvContent = exportAssessmentsToCsv(activeUnit.assessments || []);
+  const handleDownloadSemesterCourseCsv = () => {
+    const csvContent = generateSemesterCourseTemplateCsv();
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${activeUnit.unitCode || 'unit'}_assessments_rubrics.csv`);
+    link.href = url;
+    link.setAttribute('download', 'super-rto-semester-course-template-14-15weeks.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    setStatusMessage('📥 Downloaded Full Semester Course CSV Template (14–15 Weeks with Multiple Elements).');
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExportFullCourseCsv = () => {
+    const csvContent = exportCourseToCsv(course);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeCode = (course.code || 'course').toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+    link.setAttribute('download', `${safeCode}-curriculum-export.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setStatusMessage(`📤 Exported full course "${course.title}" to CSV.`);
+    setTimeout(() => setStatusMessage(null), 3500);
+  };
+
+  const handleImportFullCourseCsv = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -906,64 +1151,109 @@ export const UnifiedCourseBuilder: React.FC = () => {
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
-        if (!text || !text.trim()) {
-          setStatusMessage('Uploaded CSV file is empty.');
+        const parsed = parseCourseCsv(text);
+        if (!parsed.units || parsed.units.length === 0) {
+          setStatusMessage('CSV imported but no units found. Please verify columns match template.');
+          setTimeout(() => setStatusMessage(null), 4000);
           return;
         }
-
-        const importedAssessments = parseRubricsCsv(text);
-        if (importedAssessments.length === 0) {
-          setStatusMessage('No valid assessment rows could be extracted from the CSV.');
-          return;
-        }
-
-        const updatedUnits = [...course.units];
-        updatedUnits[activeUnitIndex].assessments =
-          assessmentSortOption === 'manual'
-            ? importedAssessments
-            : sortAssessments(importedAssessments, assessmentSortOption);
-        setCourse({ ...course, units: updatedUnits });
-        setStatusMessage(`✨ Successfully imported ${importedAssessments.length} assessment(s) with 5-level rubrics from CSV.`);
-        setTimeout(() => setStatusMessage(null), 5000);
+        setCourse((prev) => {
+          syncAllUnitsToSyllabiBank(parsed.units, parsed.code || prev.code, parsed.title || prev.title);
+          return {
+            ...prev,
+            title: parsed.title || prev.title,
+            code: parsed.code || prev.code,
+            units: parsed.units
+          };
+        });
+        setActiveUnitIndex(0);
+        setStatusMessage(
+          `✨ Successfully imported ${parsed.units.length} units (${parsed.durationWeeks}-week curriculum) and synchronized to Unit Syllabi bank.`
+        );
+        setTimeout(() => setStatusMessage(null), 4000);
       } catch (err) {
-        console.error('Failed to parse assessment rubrics CSV:', err);
-        setStatusMessage('Error reading CSV file. Please verify CSV format against the template.');
+        console.error('Course CSV import error:', err);
+        setStatusMessage('Error parsing Course CSV. Check format against template.');
+        setTimeout(() => setStatusMessage(null), 4000);
       } finally {
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
+        if (courseCsvInputRef.current) {
+          courseCsvInputRef.current.value = '';
         }
       }
     };
     reader.readAsText(file);
   };
 
+  if (isStudent) {
+    return (
+      <div className="space-y-4" data-testid="student-course-builder-restricted">
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-xs text-indigo-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+              🎓
+            </span>
+            <div>
+              <p className="font-bold text-indigo-950">
+                Student Perspective: Live Course & Enrolled Units Hub
+              </p>
+              <p className="text-[11px] text-indigo-700">
+                Viewing accredited qualification structure, units, lessons, and 5-level AQF rubrics from Course Builder. Authoring and editing tools are reserved for accredited faculty.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (onNavigateToCourses) {
+                onNavigateToCourses();
+              } else if (typeof window !== 'undefined') {
+                window.location.href = '/?tab=courses';
+              }
+            }}
+            data-testid="student-view-courses-btn"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap shrink-0"
+          >
+            Explore Public Degrees &rarr;
+          </button>
+        </div>
+
+        <StudentCourseInfoPanel
+          initialCourseCode={course.code}
+          onNavigateToTab={() => {
+            if (onNavigateToCourses) onNavigateToCourses();
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       data-agent-id="course-builder"
       data-testid="unified-course-builder-container"
-      className="bg-white border border-slate-200/90 rounded-2xl p-6 text-slate-900 shadow-sm space-y-6 max-w-6xl mx-auto"
+      className="bg-white border border-slate-200/90 rounded-2xl p-3.5 sm:p-5 md:p-6 text-slate-900 shadow-sm space-y-4 sm:space-y-6 w-full max-w-7xl mx-auto overflow-hidden"
     >
       {/* Builder Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
-            <Layers className="w-6 h-6" />
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-emerald-600 to-indigo-600 flex items-center justify-center text-white shadow-md shrink-0">
+            <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold tracking-tight text-slate-900">LMS Course & Curriculum Builder</h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">LMS Course & Curriculum Builder</h2>
+              <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                 PRO-LMS FUSION
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
               Author ASQA vocational competencies, TEQSA higher ed rubrics, or international modular courses.
             </p>
           </div>
         </div>
 
         {/* Action Buttons & Global Expand/Collapse */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
           <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
             <button
               type="button"
@@ -995,20 +1285,73 @@ export const UnifiedCourseBuilder: React.FC = () => {
             type="button"
             data-testid="ai-ingest-btn"
             onClick={() => setIsAiModalOpen(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+            className="px-3 sm:px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all shrink-0"
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
             <span>✨ AI Ingest (10 Tokens)</span>
           </button>
 
+          {/* Flexible Course CSV Tools: Short (1-4 wks) vs Semester (14-15 wks) */}
+          <div className="flex items-center flex-wrap sm:flex-nowrap gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 max-w-full overflow-x-auto">
+            <button
+              type="button"
+              data-testid="download-short-course-csv-btn"
+              onClick={handleDownloadShortCourseCsv}
+              className="px-2 sm:px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors shrink-0"
+              title="Download flexible Short Course CSV template (1–4 weeks, modular units, multiple elements)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Short Course CSV</span>
+            </button>
+            <button
+              type="button"
+              data-testid="download-semester-course-csv-btn"
+              onClick={handleDownloadSemesterCourseCsv}
+              className="px-2 sm:px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors shrink-0"
+              title="Download flexible Long Semester CSV template (14–15 weeks, 15 weekly topics, mid & final exams)"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Semester CSV (15 Wks)</span>
+            </button>
+            <button
+              type="button"
+              data-testid="import-full-course-csv-btn"
+              onClick={() => courseCsvInputRef.current?.click()}
+              className="px-2 sm:px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors shrink-0"
+              title="Import complete course curriculum, multiple elements, lessons, and rubrics from CSV"
+            >
+              <Upload className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Import CSV</span>
+            </button>
+            <button
+              type="button"
+              data-testid="export-full-course-csv-btn"
+              onClick={handleExportFullCourseCsv}
+              className="px-2 sm:px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors shrink-0"
+              title="Export active course curriculum with all units and elements to CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-slate-600" />
+              <span>Export CSV</span>
+            </button>
+            <input
+              type="file"
+              ref={courseCsvInputRef}
+              data-testid="course-csv-file-input"
+              accept=".csv"
+              onChange={handleImportFullCourseCsv}
+              className="hidden"
+            />
+          </div>
+
           <button
             type="button"
             data-testid="save-course-btn"
             onClick={() => {
-              setStatusMessage('Course structure saved to Firestore successfully.');
+              syncAllUnitsToSyllabiBank(course.units, course.code, course.title);
+              setStatusMessage('Course structure and units saved to Firestore & Unit Syllabi bank successfully.');
               setTimeout(() => setStatusMessage(null), 3000);
             }}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+            className="px-3.5 sm:px-4 py-1.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all shrink-0"
           >
             <Save className="w-4 h-4" />
             <span>Save Course</span>
@@ -1027,7 +1370,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
       <div className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-2xs transition-all">
         <div
           onClick={() => setIsCourseMetaCollapsed(!isCourseMetaCollapsed)}
-          className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+          className="p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <button
@@ -1040,7 +1383,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 e.stopPropagation();
                 setIsCourseMetaCollapsed(!isCourseMetaCollapsed);
               }}
-              className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
+              className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors shrink-0"
             >
               {isCourseMetaCollapsed ? (
                 <ChevronRight className="w-4 h-4 text-indigo-600" />
@@ -1048,23 +1391,23 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 <ChevronDown className="w-4 h-4 text-indigo-600" />
               )}
             </button>
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider shrink-0">
               Course Details & Configuration
             </span>
             {isCourseMetaCollapsed && (
-              <span className="text-xs text-slate-600 font-mono font-medium truncate ml-2">
+              <span className="text-xs text-slate-600 font-mono font-medium truncate ml-1 sm:ml-2">
                 {course.code || 'NO-CODE'} &bull; {course.title || 'Untitled'} &bull; {currentFacultyInfo.facultyName} ({course.tokenCost} tokens)
               </span>
             )}
           </div>
-          <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">
+          <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-7 sm:ml-2">
             {isCourseMetaCollapsed ? 'Click to expand' : 'Click to collapse'}
           </span>
         </div>
 
         {!isCourseMetaCollapsed && (
-          <div className="p-4 pt-0 border-t border-slate-200/60 grid grid-cols-1 md:grid-cols-4 gap-4 mt-1">
-            <div className="md:col-span-2">
+          <div className="p-3.5 sm:p-4 pt-0 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-1">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-bold text-slate-700 mb-1">Course Title</label>
               <input
                 type="text"
@@ -1107,7 +1450,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-bold text-slate-700 mb-1">Governing Faculty</label>
               <input
                 type="text"
@@ -1121,7 +1464,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
               />
             </div>
 
-            <div className="md:col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-xs font-bold text-slate-700 mb-1">Academic School / Department</label>
               <input
                 type="text"
@@ -1136,7 +1479,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
             </div>
 
             {/* Course Description Box */}
-            <div className="md:col-span-4">
+            <div className="col-span-1 sm:col-span-2 lg:col-span-4">
               <label className="block text-xs font-bold text-slate-700 mb-1">Course Description</label>
               <textarea
                 rows={3}
@@ -1179,7 +1522,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
       >
         <div
           onClick={() => setIsPerformanceCriteriaCollapsed(!isPerformanceCriteriaCollapsed)}
-          className="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+          className="p-3 sm:p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <button
@@ -1192,7 +1535,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
               data-testid="toggle-performance-criteria-btn"
               aria-label="Toggle Performance Criteria Section"
               aria-expanded={!isPerformanceCriteriaCollapsed}
-              className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors"
+              className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors shrink-0"
               title={
                 isPerformanceCriteriaCollapsed
                   ? 'Expand Performance Criteria Section'
@@ -1206,26 +1549,33 @@ export const UnifiedCourseBuilder: React.FC = () => {
               )}
             </button>
             <div className="min-w-0">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <Target className="w-4 h-4 text-emerald-600" />
                   <span>Performance Criteria</span>
                 </h4>
 
-                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold shrink-0">
                   {(activeUnit.performanceCriteria || []).length} Criteria
+                </span>
+
+                <span
+                  data-testid="elements-count-badge"
+                  className="px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-mono font-bold shrink-0"
+                >
+                  {getUniqueElementsFromUnit(activeUnit).length} Element(s)
                 </span>
 
                 {course.units.length > 0 && (
                   <div
-                    className="flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 rounded-lg px-2 py-0.5 ml-1"
+                    className="flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 rounded-lg px-2 py-0.5 max-w-full overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <span className="text-slate-400 font-bold">Unit:</span>
+                    <span className="text-slate-400 font-bold shrink-0">Unit:</span>
                     <select
                       value={activeUnitIndex}
                       onChange={(e) => setActiveUnitIndex(parseInt(e.target.value))}
-                      className="bg-transparent text-emerald-700 font-bold font-mono outline-none cursor-pointer"
+                      className="bg-transparent text-emerald-700 font-bold font-mono outline-none cursor-pointer max-w-[180px] sm:max-w-none truncate"
                       title="Select unit to view/edit performance criteria"
                       aria-label="Select Unit for Performance Criteria"
                     >
@@ -1238,49 +1588,125 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   </div>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                ASQA competency benchmark criteria &amp; performance statements that define learning outcomes.
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                ASQA competency benchmarks: Multiple discrete Elements of Competency with hierarchical Performance Criteria.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap w-full md:w-auto justify-start sm:justify-end" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => handleAddElement(activeUnitIndex)}
+              data-agent-id="course-builder-add-element-btn"
+              data-testid="add-element-btn"
+              aria-label="Add Element of Competency"
+              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors shrink-0"
+              title="Add new Element of Competency to active unit"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Add Element</span>
+            </button>
+
             <button
               type="button"
               onClick={() => handleAddPerformanceCriterion(activeUnitIndex)}
               data-agent-id="course-builder-add-performance-criterion-btn"
               data-testid="add-performance-criterion-btn"
               aria-label="Add Performance Criterion"
-              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors shrink-0"
               title="Add new performance criterion to active unit"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Performance Criterion</span>
+              <span>+ Add Criterion</span>
             </button>
           </div>
         </div>
 
         {!isPerformanceCriteriaCollapsed && (
-          <div className="p-4 pt-0 border-t border-slate-100 space-y-3 mt-2">
+          <div className="p-3.5 sm:p-4 pt-0 border-t border-slate-100 space-y-3 mt-2">
+            {/* Quick Elements Filter / Header Bar */}
+            {activeUnit.performanceCriteria && activeUnit.performanceCriteria.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 p-2 sm:p-2.5 rounded-xl border border-slate-200 text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap overflow-x-auto max-w-full pb-0.5 sm:pb-0">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 shrink-0">Filter Element:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedElementFilter('ALL')}
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors shrink-0 ${
+                      selectedElementFilter === 'ALL'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    All Elements ({activeUnit.performanceCriteria.length})
+                  </button>
+                  {getUniqueElementsFromUnit(activeUnit).map((el, elIdx) => {
+                    const count = (activeUnit.performanceCriteria || []).filter(
+                      (c) => (c.element || '').trim().toLowerCase() === el.trim().toLowerCase()
+                    ).length;
+                    const isSelected = selectedElementFilter === el;
+                    return (
+                      <button
+                        key={elIdx}
+                        type="button"
+                        onClick={() => setSelectedElementFilter(el)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition-colors truncate max-w-[200px] shrink-0 ${
+                          isSelected
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                        }`}
+                        title={el}
+                      >
+                        {el.split(':')[0] || `Element ${elIdx + 1}`} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  data-testid="add-element-secondary-btn"
+                  onClick={() => handleAddElement(activeUnitIndex)}
+                  className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[11px] font-bold shrink-0 flex items-center gap-1 transition-colors self-start sm:self-auto"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>New Element</span>
+                </button>
+              </div>
+            )}
+
             {!activeUnit.performanceCriteria || activeUnit.performanceCriteria.length === 0 ? (
               <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
                 <Target className="w-8 h-8 text-slate-400 mx-auto" />
                 <p className="text-xs font-bold text-slate-700">No performance criteria defined for this unit yet.</p>
                 <p className="text-[11px] text-slate-500">
-                  Click &ldquo;+ Add Performance Criterion&rdquo; to establish the required competency benchmarks before defining assessments.
+                  Click &ldquo;+ Add Element&rdquo; or &ldquo;+ Add Criterion&rdquo; to establish the required competency benchmarks.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => handleAddPerformanceCriterion(activeUnitIndex)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add First Criterion</span>
-                </button>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAddElement(activeUnitIndex)}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add First Element</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddPerformanceCriterion(activeUnitIndex)}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add First Criterion</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
-                {activeUnit.performanceCriteria.map((pc, pcIdx) => (
+                {activeUnit.performanceCriteria
+                  .filter((pc) => selectedElementFilter === 'ALL' || pc.element === selectedElementFilter)
+                  .map((pc, pcIdx) => (
                   <div
                     key={pc.id}
                     data-agent-id={`course-builder-performance-criterion-${pc.id}`}
@@ -1409,7 +1835,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs transition-all">
         <div
           onClick={() => setIsAssessmentsSectionCollapsed(!isAssessmentsSectionCollapsed)}
-          className="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
+          className="p-3 sm:p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-slate-50 transition-colors select-none"
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <button
@@ -1422,7 +1848,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
               data-testid="toggle-assessments-section-btn"
               aria-label="Toggle Assessments & Rubrics Section"
               aria-expanded={!isAssessmentsSectionCollapsed}
-              className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors"
+              className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors shrink-0"
               title={isAssessmentsSectionCollapsed ? 'Expand Assessments Section' : 'Collapse Assessments Section'}
             >
               {isAssessmentsSectionCollapsed ? (
@@ -1432,15 +1858,15 @@ export const UnifiedCourseBuilder: React.FC = () => {
               )}
             </button>
             <div className="min-w-0">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <Award className="w-4 h-4 text-amber-600" />
                   <span>Assessment</span>
                 </h4>
 
                 {/* Dropdown and + for creating more exams, formative, summative exam, and their rubrics */}
                 <div
-                  className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg p-0.5 shadow-2xs"
+                  className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-lg p-0.5 shadow-2xs max-w-full"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <select
@@ -1449,7 +1875,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                     data-agent-id="course-builder-assessment-type-select"
                     data-testid="assessment-type-select"
                     aria-label="Select Assessment or Exam Type"
-                    className="bg-transparent text-slate-800 text-xs font-bold px-2 py-1 outline-none cursor-pointer"
+                    className="bg-transparent text-slate-800 text-xs font-bold px-1.5 sm:px-2 py-1 outline-none cursor-pointer max-w-[150px] sm:max-w-none"
                   >
                     <option value="summative_exam">Summative Exam</option>
                     <option value="formative_exam">Formative Exam</option>
@@ -1462,7 +1888,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                     data-agent-id="course-builder-add-selected-assessment-btn"
                     data-testid="add-selected-assessment-btn"
                     aria-label="Create Assessment or Exam"
-                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
+                    className="px-2 sm:px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors shrink-0"
                     title="Add selected exam or assessment with rubrics"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1470,19 +1896,19 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   </button>
                 </div>
 
-                <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-mono font-bold">
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-mono font-bold shrink-0">
                   {activeUnit.assessments.length} Active
                 </span>
                 {course.units.length > 0 && (
                   <div
-                    className="flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 rounded-lg px-2 py-0.5 ml-1"
+                    className="flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 rounded-lg px-2 py-0.5 max-w-full overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <span className="text-slate-400 font-bold">Unit:</span>
+                    <span className="text-slate-400 font-bold shrink-0">Unit:</span>
                     <select
                       value={activeUnitIndex}
                       onChange={(e) => setActiveUnitIndex(parseInt(e.target.value))}
-                      className="bg-transparent text-indigo-700 font-bold font-mono outline-none cursor-pointer"
+                      className="bg-transparent text-indigo-700 font-bold font-mono outline-none cursor-pointer max-w-[180px] sm:max-w-none truncate"
                       title="Select unit to view/edit assessments"
                     >
                       {course.units.map((u, i) => (
@@ -1494,14 +1920,14 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   </div>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
                 AQF competency rubrics with 5 performance levels (NYC to Exemplary) &amp; CSV import/export.
               </p>
             </div>
           </div>
 
           {/* Assessment Actions Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto justify-between md:justify-end" onClick={(e) => e.stopPropagation()}>
             {/* Sort Order Selector */}
             <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 shadow-2xs">
               <ArrowUpDown className="w-3.5 h-3.5 text-amber-600" />
@@ -1534,55 +1960,9 @@ export const UnifiedCourseBuilder: React.FC = () => {
               }}
               data-agent-id="course-builder-toggle-all-assessments-btn"
               data-testid="toggle-all-assessments-btn"
-              className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 transition-colors shadow-2xs"
+              className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 transition-colors shadow-2xs cursor-pointer shrink-0"
             >
               {activeUnit.assessments.every((a) => collapsedAssessmentIds[a.id]) ? 'Expand All' : 'Collapse All'}
-            </button>
-
-            {/* CSV Upload */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleCsvUpload}
-              accept=".csv"
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              data-agent-id="course-builder-upload-csv-btn"
-              data-testid="upload-csv-btn"
-              aria-label="Upload Assessment Rubrics CSV"
-              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-              title="Upload custom assessments with 5-level rubrics via CSV"
-            >
-              <Upload className="w-3.5 h-3.5 text-slate-600" /> Upload CSV
-            </button>
-
-            {/* CSV Template Download */}
-            <button
-              type="button"
-              onClick={handleDownloadCsvTemplate}
-              data-agent-id="course-builder-download-csv-template-btn"
-              data-testid="download-csv-template-btn"
-              aria-label="Download CSV Rubric Template"
-              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-              title="Download sample CSV template with 5 rubric levels"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-600" /> Template
-            </button>
-
-            {/* Export Current Rubrics */}
-            <button
-              type="button"
-              onClick={handleExportCurrentRubricsCsv}
-              data-agent-id="course-builder-export-rubrics-btn"
-              data-testid="export-rubrics-btn"
-              aria-label="Export Active Unit Rubrics as CSV"
-              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors"
-              title="Export current unit assessments and rubrics as CSV"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" /> Export CSV
             </button>
           </div>
         </div>
@@ -1594,7 +1974,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 <Award className="w-8 h-8 text-slate-400 mx-auto" />
                 <p className="text-xs font-bold text-slate-700">No assessments defined for this unit.</p>
                 <p className="text-[11px] text-slate-500">
-                  Click &ldquo;+ Formative&rdquo;, &ldquo;+ Summative&rdquo;, or &ldquo;Upload CSV&rdquo; to populate assessment rubrics with 5 levels.
+                  Click &ldquo;+ Formative&rdquo; or &ldquo;+ Summative&rdquo; to add assessments with 5-level rubrics, or import a complete course using &ldquo;Import CSV&rdquo; at the top.
                 </p>
               </div>
             ) : (
@@ -1605,10 +1985,10 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 return (
                   <div
                     key={ass.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 shadow-2xs space-y-3 transition-all"
+                    className="p-3.5 sm:p-4 rounded-xl border border-slate-200 bg-slate-50/60 shadow-2xs space-y-3 transition-all"
                   >
                     {/* Assessment Card Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pb-2 border-b border-slate-200/80">
                       <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
                         <button
                           type="button"
@@ -1700,7 +2080,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                           data-testid={`assessment-title-${ass.id}`}
                           aria-label={`Assessment Title for ${ass.id}`}
                           placeholder="Assessment Title..."
-                          className="text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded px-2 py-1 outline-none focus:border-indigo-600 flex-1 min-w-[160px]"
+                          className="text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded px-2 py-1 outline-none focus:border-indigo-600 flex-1 min-w-[140px]"
                         />
 
                         {/* Due Date / Exam Date Input */}
@@ -1722,20 +2102,20 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap w-full lg:w-auto justify-between lg:justify-end mt-1 lg:mt-0">
                         <button
                           type="button"
                           onClick={() => handleAddCriterion(assIdx)}
                           data-agent-id={`course-builder-add-criterion-${ass.id}-btn`}
                           data-testid={`add-criterion-${ass.id}`}
                           aria-label={`Add Criterion to ${ass.title}`}
-                          className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs"
+                          className="px-2 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded text-[10px] font-bold flex items-center gap-1 shadow-2xs shrink-0"
                         >
                           <Plus className="w-3 h-3 text-indigo-600" /> + {isFormative ? 'Formative' : 'Summative'} Rubric Criterion
                         </button>
 
                         {deletingAssessmentId === ass.id ? (
-                          <div className="flex items-center gap-1 animate-in fade-in duration-200">
+                          <div className="flex items-center gap-1 animate-in fade-in duration-200 shrink-0">
                             <button
                               type="button"
                               onClick={() => handleDeleteAssessment(assIdx)}
@@ -1764,7 +2144,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                             data-agent-id={`course-builder-delete-assessment-${ass.id}-btn`}
                             data-testid={`delete-assessment-${ass.id}`}
                             aria-label={`Delete Assessment ${ass.title}`}
-                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors rounded hover:bg-rose-50"
+                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors rounded hover:bg-rose-50 shrink-0"
                             title="Delete Assessment"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1813,7 +2193,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                 className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs"
                               >
                                 {/* Criterion Header */}
-                                <div className="p-3 bg-slate-50/80 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="p-2.5 sm:p-3 bg-slate-50/80 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                   <div className="flex items-center gap-2 flex-1 min-w-0">
                                     <button
                                       type="button"
@@ -1822,7 +2202,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                       data-testid={`toggle-criterion-${c.id}`}
                                       aria-label={`Toggle Rubric Criterion ${c.name}`}
                                       aria-expanded={!isCriterionCollapsed}
-                                      className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors"
+                                      className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors shrink-0"
                                       title={isCriterionCollapsed ? 'Expand Rubric Levels' : 'Collapse Rubric Levels'}
                                     >
                                       {isCriterionCollapsed ? (
@@ -1850,7 +2230,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                     />
                                   </div>
 
-                                  <div className="flex items-center gap-3 shrink-0">
+                                  <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                                     <div className="flex items-center gap-1 text-[10px] font-mono font-semibold text-slate-600">
                                       <span>Weight:</span>
                                       <input
@@ -1910,7 +2290,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                 {/* 5-Level Rubric Table / Cards */}
                                 {!isCriterionCollapsed && (
                                   <div className="p-3 space-y-2">
-                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5 sm:gap-3">
                                       {levels.map((lvl, lIndex) => {
                                         const levelColors = [
                                           { border: 'border-rose-200', bg: 'bg-rose-50/50', badge: 'bg-rose-100 text-rose-800' },
@@ -1924,18 +2304,18 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                         return (
                                           <div
                                             key={`lvl-${c.id}-${lvl.level}`}
-                                            className={`p-2.5 rounded-lg border ${theme.border} ${theme.bg} flex flex-col justify-between space-y-1.5`}
+                                            className={`p-2.5 sm:p-3 rounded-lg border ${theme.border} ${theme.bg} flex flex-col justify-between space-y-2 min-w-0`}
                                           >
                                             <div className="flex items-center justify-between">
                                               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${theme.badge}`}>
                                                 L{lvl.level}
                                               </span>
-                                              <span className="text-[9px] text-slate-500 font-medium">
+                                              <span className="text-[10px] text-slate-600 font-semibold truncate ml-1">
                                                 {lvl.label.replace(/^Level \d+ - /, '')}
                                               </span>
                                             </div>
                                             <textarea
-                                              rows={5}
+                                              rows={4}
                                               value={lvl.descriptor}
                                               onChange={(e) => {
                                                 const updated = [...course.units];
@@ -1949,7 +2329,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                                               data-agent-id={`course-builder-rubric-desc-${c.id}-l${lvl.level}`}
                                               data-testid={`rubric-desc-${c.id}-l${lvl.level}`}
                                               aria-label={`Descriptor for Level ${lIndex + 1} of ${c.name}`}
-                                              className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded p-1.5 text-[10px] text-slate-800 outline-none leading-tight resize-y font-sans"
+                                              className="w-full bg-white border border-slate-200 focus:border-indigo-600 rounded p-2 text-xs text-slate-800 outline-none leading-relaxed resize-y font-sans shadow-2xs"
                                               placeholder={`Explain how to think about Level ${lIndex + 1} score...`}
                                             />
                                           </div>
@@ -1973,7 +2353,8 @@ export const UnifiedCourseBuilder: React.FC = () => {
       </div>
 
       {/* Units Sidebar & Curriculum Editor */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Units Sidebar & Curriculum Editor */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* Left Column: Units List */}
         <div className="space-y-3">
@@ -1992,12 +2373,12 @@ export const UnifiedCourseBuilder: React.FC = () => {
             </button>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-72 sm:max-h-96 lg:max-h-none overflow-y-auto pr-1">
             {course.units.map((u, idx) => (
               <div
                 key={u.id}
                 onClick={() => setActiveUnitIndex(idx)}
-                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                className={`p-3 sm:p-3.5 rounded-xl border cursor-pointer transition-all ${
                   activeUnitIndex === idx
                     ? 'bg-indigo-50/70 border-indigo-400 shadow-xs'
                     : 'bg-white border-slate-200 hover:border-slate-300'
@@ -2069,15 +2450,15 @@ export const UnifiedCourseBuilder: React.FC = () => {
         </div>
 
         {/* Right Column: Lessons Editor */}
-        <div className="lg:col-span-2 space-y-5">
+        <div className="lg:col-span-2 space-y-4 sm:space-y-5">
           {activeUnit && (
-            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
+            <div className="bg-slate-50 p-3.5 sm:p-5 rounded-xl border border-slate-200 space-y-4">
               
               {/* Unit Info Header & Fields (Collapsible) */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs transition-all">
                 <div
                   onClick={() => setIsUnitInfoCollapsed(!isUnitInfoCollapsed)}
-                  className="p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors select-none"
+                  className="p-3 sm:p-3.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors select-none"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <button
@@ -2090,7 +2471,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         e.stopPropagation();
                         setIsUnitInfoCollapsed(!isUnitInfoCollapsed);
                       }}
-                      className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors"
+                      className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors shrink-0"
                     >
                       {isUnitInfoCollapsed ? (
                         <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
@@ -2098,11 +2479,11 @@ export const UnifiedCourseBuilder: React.FC = () => {
                         <ChevronDown className="w-3.5 h-3.5 text-indigo-600" />
                       )}
                     </button>
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider shrink-0">
                       Unit of Competency Details
                     </span>
                     {isUnitInfoCollapsed && (
-                      <span className="text-xs text-slate-600 font-medium truncate ml-2">
+                      <span className="text-xs text-slate-600 font-medium truncate ml-1 sm:ml-2">
                         {activeUnit.unitCode}: {activeUnit.unitTitle} ({activeUnit.nominalHours}h)
                       </span>
                     )}
@@ -2152,7 +2533,7 @@ export const UnifiedCourseBuilder: React.FC = () => {
                 </div>
 
                 {!isUnitInfoCollapsed && (
-                  <div className="p-4 pt-0 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
+                  <div className="p-3.5 sm:p-4 pt-0 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3 mt-1">
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-bold text-slate-700 mb-1">Unit Title</label>
                       <input
@@ -2182,6 +2563,44 @@ export const UnifiedCourseBuilder: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Unit Student Enrolments & Cohort Management (Write-in Dropdown + CSV Upload) */}
+              {activeUnit && (
+                <UnitStudentEnrolmentPanel
+                  courseCode={course.code}
+                  courseTitle={course.title}
+                  unit={activeUnit}
+                  allUnits={course.units}
+                  isCollapsed={isEnrolledStudentsCollapsed}
+                  onToggleCollapse={() =>
+                    setIsEnrolledStudentsCollapsed(!isEnrolledStudentsCollapsed)
+                  }
+                  onUpdateUnit={(updatedUnit) => {
+                    const updated = [...course.units];
+                    updated[activeUnitIndex] = updatedUnit;
+                    setCourse({ ...course, units: updated });
+                    try {
+                      localStorage.setItem(
+                        'edupulse_course_builder_saved',
+                        JSON.stringify({ ...course, units: updated })
+                      );
+                    } catch (e) {
+                      console.warn('Failed to save updated units to storage', e);
+                    }
+                  }}
+                  onBulkUpdateUnits={(updatedUnits) => {
+                    setCourse({ ...course, units: updatedUnits });
+                    try {
+                      localStorage.setItem(
+                        'edupulse_course_builder_saved',
+                        JSON.stringify({ ...course, units: updatedUnits })
+                      );
+                    } catch (e) {
+                      console.warn('Failed to save bulk updated units to storage', e);
+                    }
+                  }}
+                />
+              )}
 
               {/* Lessons Stack Section (Collapsible) */}
               <div className="space-y-3 pt-2 border-t border-slate-200">
@@ -2846,52 +3265,108 @@ export const UnifiedCourseBuilder: React.FC = () => {
 
       </div>
 
-      {/* AI Ingest Modal */}
+      {/* AI Course Assistant Modal Grounded in course-builder-assistant skill */}
       {isAiModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-xl p-6 text-slate-900 shadow-2xl space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl p-4 sm:p-6 text-slate-900 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                <h3 className="text-base font-bold text-slate-900">✨ AI Ingest (10 Tokens)</h3>
+                <Sparkles className="w-5 h-5 text-amber-500 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900">✨ AI Course Assistant (10 Tokens)</h3>
+                  <span className="text-[10px] text-indigo-600 font-mono font-bold block sm:inline">
+                    Grounded in course-builder-assistant skill &amp; ASQA/TEQSA standards
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAiModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700"
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold p-1 rounded hover:bg-slate-100 shrink-0"
               >
                 ✕
               </button>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Paste your raw syllabus or curriculum text below. The AI architect will parse it into 40-hour units, 45-minute modular lessons, and ASQA/TEQSA assessment rubrics.
+              Synthesize full courses with <strong>multiple Elements of Competency</strong> per unit, lessons, and 5-level scoring rubrics. Supports both <strong>Short Courses (1–4 weeks)</strong> and <strong>Long Semester Courses (14–15 weeks)</strong>.
             </p>
 
+            {/* Quick 1-Click Presets */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Quick Presets:</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  data-testid="ai-preset-short-course-btn"
+                  onClick={() => {
+                    setAiSyllabusInput(
+                      `COURSE TITLE: Applied AI & LLM Engineering Bootcamp\nCOURSE CODE: CERT-AI-BOOTCAMP\nDURATION WEEKS: 4\n\nUNIT 1: AIE101 - Prompt Engineering & Context Design (20 Nominal Hours)\nELEMENT 1: Structured Prompt Design & Schema Formatting\nELEMENT 2: Multi-Modal Ingestion & Hallucination Mitigation\nLESSON 1: Week 1 - System Prompts & Few-Shot Engineering\nLESSON 2: Week 2 - Multi-Modal Context Ingestion Lab\nFORMATIVE ASSESSMENT: Prompt Engineering Checkpoint #1\nSUMMATIVE ASSESSMENT: Production Grounded Application Portfolio #1\n\nUNIT 2: AIE102 - Autonomous Agent Workflows & RAG (20 Nominal Hours)\nELEMENT 1: Vector Embeddings & Hybrid Retrieval\nELEMENT 2: Autonomous Tool Calling & Safe Execution\nLESSON 1: Week 3 - Vector Embeddings & Hybrid Ingestion\nLESSON 2: Week 4 - Autonomous Tool Calling & Production Agents\nFORMATIVE ASSESSMENT: Agent Tool Calling Simulation #2\nSUMMATIVE ASSESSMENT: Final Capstone Autonomous Agent & RAG System #2`
+                    );
+                  }}
+                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-colors"
+                >
+                  ⚡ 4-Week Short Course Preset
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="ai-preset-semester-course-btn"
+                  onClick={() => {
+                    setAiSyllabusInput(
+                      `COURSE TITLE: Bachelor of Cyber Security & Systems Defense\nCOURSE CODE: CYB401-SEM\nDURATION WEEKS: 15\n\nUNIT 1: CYB401 - Threat Modeling, Perimeter Defense & Cryptography (50 Nominal Hours)\nELEMENT 1: Threat Surface Modeling & Zero Trust Architecture\nELEMENT 2: Cryptographic Protocols & Key Management Systems\nELEMENT 3: Statutory WHS, ASQA & TEQSA Security Governance\nLESSON 1: Week 1 - Threat Surface Analysis & Network Micro-segmentation\nLESSON 2: Week 2 - Cryptographic Algorithms & Cipher Suites\nLESSON 3: Week 3 - HSM Key Management & Automated Secret Rotation\nLESSON 4: Week 4 - Privacy Act Compliance & Breach Notification Timelines\nLESSON 5: Week 5 - Perimeter Defense Simulation Lab\nFORMATIVE ASSESSMENT: Cryptography & Perimeter Defense Checkpoint #1\n\nUNIT 2: CYB402 - Cloud Infrastructure Security & Forensics (70 Nominal Hours)\nELEMENT 1: Cloud Architecture Hardening & IAM Governance\nELEMENT 2: Digital Forensics, Memory Analysis & Evidence Preservation\nELEMENT 3: Post-Breach Remediation & Executive Audit Reporting\nLESSON 6: Week 6 - Cloud Infrastructure & Serverless Hardening\nLESSON 7: Week 7 - Mid-Semester Practical Examination\nLESSON 8: Week 8 - Memory Dump Analysis & Volatile Data Capture\nLESSON 9: Week 9 - SIEM Event Correlation & Lateral Movement Analysis\nLESSON 10: Week 10 - Container Runtime Security Scanning\nLESSON 11: Week 11 - Forensic Evidence Preservation Drill\nLESSON 12: Week 12 - Threat Hunting Scenario\nLESSON 13: Week 13 - Executive Audit Briefing Preparation\nLESSON 14: Week 14 - Capstone Review & Synthesis\nLESSON 15: Week 15 - Final Comprehensive Examination & Capstone Defense\nSUMMATIVE ASSESSMENT: Mid-Semester Practical Examination (Week 7)\nSUMMATIVE ASSESSMENT: Final Comprehensive Examination & Capstone Defense (Week 15)`
+                    );
+                  }}
+                  className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-colors"
+                >
+                  🎓 15-Week Semester Course Preset
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="ai-preset-short-csv-btn"
+                  onClick={() => setAiSyllabusInput(generateShortCourseTemplateCsv())}
+                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors"
+                >
+                  📄 Paste Short CSV
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="ai-preset-semester-csv-btn"
+                  onClick={() => setAiSyllabusInput(generateSemesterCourseTemplateCsv())}
+                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold transition-colors"
+                >
+                  📄 Paste Semester CSV
+                </button>
+              </div>
+            </div>
+
             <textarea
-              rows={8}
+              rows={7}
               value={aiSyllabusInput}
               onChange={(e) => setAiSyllabusInput(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 font-mono outline-none focus:border-indigo-600 focus:bg-white"
-              placeholder={`COURSE TITLE: Bachelor of Cyber Security\nCOURSE CODE: BCS2026\nUNIT 1: CYB101 - Network Defense Protocols (40 Nominal Hours)\nLESSON 1: Packet Analysis & Firewalls (45 min)\n- CONTENT DESCRIPTION: Deep packet inspection principles...\nSUMMATIVE ASSESSMENT: Firewall Penetration Defense`}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 font-mono outline-none focus:border-indigo-600 focus:bg-white shadow-2xs leading-relaxed"
+              placeholder={`COURSE TITLE: Course Title\nCOURSE CODE: CODE101\nDURATION WEEKS: 4 or 15\nUNIT 1: UNIT101 - Title (40 Nominal Hours)\nELEMENT 1: Element 1 Title\nELEMENT 2: Element 2 Title\nLESSON 1: Week 1 Topic\nSUMMATIVE ASSESSMENT: Title`}
             />
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <span className="text-xs text-amber-700 font-mono font-bold">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
+              <span className="text-xs text-amber-700 font-mono font-bold text-center sm:text-left">
                 🪙 Cost: 10 Tokens
               </span>
-              <div className="flex gap-2">
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsAiModalOpen(false)}
-                  className="px-4 py-2 text-xs text-slate-600 hover:text-slate-900"
+                  className="px-4 py-2 text-xs text-slate-600 hover:text-slate-900 font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  data-testid="synthesize-course-btn"
                   onClick={handleAiIngest}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
                 >
                   Synthesize Course
                 </button>

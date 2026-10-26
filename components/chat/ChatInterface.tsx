@@ -271,7 +271,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 Agentic Online
               </span>
             </div>
-            <p className="text-xs text-slate-400">Admissions • Courses • Unit Syllabuses • Application • Google Calendar</p>
+            <p className="text-xs text-slate-400">Admissions • Courses • Unit Syllabi • Application • Google Calendar</p>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { ensureFolder, startResumableUpload } from '@/lib/drive/googleDrive';
+import { ensureFolder, startResumableUpload, DEFAULT_ROOT_FOLDER_ID } from '@/lib/drive/googleDrive';
 import { getVerifiedCaller } from '@/lib/auth/serverAuth';
 import { isFirebaseConfigured, recordActivity } from '@/lib/firebase/admin';
 
@@ -39,6 +39,11 @@ const PERMITTED_ROLES = [
   'president',
   'ceo',
   'coo',
+  'student',
+  'applicant',
+  'supporter',
+  'alumni',
+  'staff',
 ];
 
 export async function POST(req: NextRequest) {
@@ -52,7 +57,7 @@ export async function POST(req: NextRequest) {
       if (!isAllowed) {
         return NextResponse.json(
           {
-            error: 'Forbidden: Only administrators, directors, or teachers can upload files to Google Drive.',
+            error: 'Forbidden: Only university members can upload files to Google Drive.',
             code: 'FORBIDDEN',
             currentRole: caller.role,
           },
@@ -73,8 +78,8 @@ export async function POST(req: NextRequest) {
       console.warn('[drive/start-upload] Running with local development unauthenticated fallback.');
     }
 
-    // 2. Validate Root Folder ID
-    const rootId = process.env.ROOT_FOLDER_ID || process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID;
+    // 2. Validate Root Folder ID (defaults to Shared Drive: 0AB6rUwSYF0xlUk9PVA)
+    const rootId = process.env.ROOT_FOLDER_ID || process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || DEFAULT_ROOT_FOLDER_ID;
     if (!rootId) {
       console.error('[drive/start-upload] ROOT_FOLDER_ID is missing from environment variables.');
       return NextResponse.json(

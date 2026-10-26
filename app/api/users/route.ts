@@ -15,6 +15,7 @@ import {
   getVerifiedCaller,
   requireSuperAdminCaller
 } from '@/lib/auth/serverAuth';
+import { hasAnyEnrolment } from '@/lib/enrolments/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -169,7 +170,11 @@ export async function POST(req: NextRequest) {
       const isOwner = isProjectOwnerEmail(email);
       const previousRole = normalizeRole(existingData.role || existingData.status);
       const isSuper = isOwner || previousRole === 'superadmin' || existingData.isSuperAdmin === true;
-      const updatedRole = isSuper ? 'superadmin' : previousRole;
+      let updatedRole: SystemRole = isSuper ? 'superadmin' : previousRole;
+      // Supporters enrolled into a course unit by staff become students on their next sign-in.
+      if (updatedRole === 'supporter' && email && await hasAnyEnrolment(email)) {
+        updatedRole = 'student';
+      }
 
       const updatedFields: Record<string, any> = {
         lastLoginAt: new Date().toISOString(),
@@ -223,7 +228,10 @@ export async function POST(req: NextRequest) {
 
     // First-time registration -> If the email is explicitly a verified project owner / superadmin email (like support@aifoundation.net.au), grant superadmin. Everyone else strictly receives role = supporter only!
     const isOwner = isProjectOwnerEmail(email);
-    const assignedRole: SystemRole = isOwner ? 'superadmin' : DEFAULT_REGISTRATION_ROLE; // 'supporter'
+    let assignedRole: SystemRole = isOwner ? 'superadmin' : DEFAULT_REGISTRATION_ROLE; // 'supporter'
+    if (!isOwner && email && await hasAnyEnrolment(email)) {
+      assignedRole = 'student';
+    }
     const isSuper = isOwner;
 
     const newUserData = {
@@ -237,7 +245,7 @@ export async function POST(req: NextRequest) {
       status: assignedRole,
       classification: assignedRole.charAt(0).toUpperCase() + assignedRole.slice(1),
       isSuperAdmin: isSuper,
-      tags: isSuper ? ['superadmin', 'owner', 'rto-ai'] : ['supporter', 'rto-ai'],
+      tags: isSuper ? ['superadmin', 'owner', 'rto-ai'] : [assignedRole, 'rto-ai'],
       tag: 'rto-ai',
       tenantTag: 'rto-ai',
       tenantId: 'rto-ai',

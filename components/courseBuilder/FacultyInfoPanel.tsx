@@ -16,7 +16,9 @@ import {
   ChevronRight,
   ShieldCheck,
   Briefcase,
-  CheckCircle2
+  CheckCircle2,
+  Search,
+  X
 } from 'lucide-react';
 import {
   CourseFacultyInfo,
@@ -27,6 +29,12 @@ import {
   updateStaffMember,
   DEFAULT_FACULTIES
 } from '@/lib/courseBuilder/faculty';
+import {
+  getStoredStaffDirectory,
+  getTeachingStaff,
+  formatStaffAsFacultyMember,
+  StaffMemberProfile
+} from '@/lib/staff/directory';
 
 export interface FacultyInfoPanelProps {
   facultyInfo: CourseFacultyInfo;
@@ -50,6 +58,83 @@ export const FacultyInfoPanel: React.FC<FacultyInfoPanelProps> = ({
 
   const [deletingStaffId, setDeletingStaffId] = useState<string | null>(null);
   const [newAccreditationInput, setNewAccreditationInput] = useState('');
+  const [selectedStaffDropdownId, setSelectedStaffDropdownId] = useState('');
+  const [registeredTeachingStaff, setRegisteredTeachingStaff] = useState<StaffMemberProfile[]>([]);
+
+  // Search-by-name / last-name state for auto-adding staff (does not automatically show names)
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchContainerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    setRegisteredTeachingStaff(getTeachingStaff());
+    const handleUpdate = () => {
+      setRegisteredTeachingStaff(getTeachingStaff());
+    };
+    window.addEventListener('super_rto_staff_directory_updated', handleUpdate);
+    return () => window.removeEventListener('super_rto_staff_directory_updated', handleUpdate);
+  }, []);
+
+  // Close search popover on outside click
+  React.useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Filter staff by search query (by first name, last name, full name, or title)
+  // CRITICAL: Returns [] when query is empty so names are NEVER displayed automatically
+  const filteredTeachingStaff = React.useMemo(() => {
+    const q = staffSearchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const normalizedQ = q.replace(/['’]/g, '');
+
+    return registeredTeachingStaff.filter((cand) => {
+      const full = cand.fullName.toLowerCase();
+      const normalizedFull = full.replace(/['’]/g, '');
+
+      // 1. Direct full name match
+      if (full.includes(q) || normalizedFull.includes(normalizedQ)) return true;
+
+      // 2. Strip titles & degree suffixes to isolate first name & last name words
+      const cleanedName = full
+        .replace(/^(dr\.|prof\.|a\/prof\.|associate professor|mr\.|ms\.|mrs\.)\s+/i, '')
+        .replace(/,\s*(phd|mappsc|bsc|msc|beng|dip\s+whs|cohspr|cissp|fcpa|ca\s+anz).*$/i, '');
+
+      const words = cleanedName.split(/\s+/).filter(Boolean);
+      const wordMatch = words.some((word) => {
+        const cleanWord = word.replace(/['’]/g, '');
+        return cleanWord.startsWith(normalizedQ) || cleanWord.includes(normalizedQ);
+      });
+      if (wordMatch) return true;
+
+      // 3. Match appointment title or department
+      if (cand.appointmentTitle?.toLowerCase().includes(q)) return true;
+      if (cand.department?.toLowerCase().includes(q)) return true;
+
+      return false;
+    });
+  }, [registeredTeachingStaff, staffSearchQuery]);
+
+  const handleSelectStaff = (cand: StaffMemberProfile) => {
+    const postcard = formatStaffAsFacultyMember(cand);
+    onChange(addStaffMember(facultyInfo, postcard));
+    setStaffSearchQuery('');
+    setIsSearchOpen(false);
+    setSelectedStaffDropdownId('');
+  };
+
+  const handleAddFromDropdown = (staffId: string) => {
+    if (!staffId) return;
+    const target = registeredTeachingStaff.find((s) => s.id === staffId);
+    if (!target) return;
+    handleSelectStaff(target);
+  };
 
   const toggleCollapse = () => {
     if (!isCollapsible) return;
@@ -426,24 +511,127 @@ export const FacultyInfoPanel: React.FC<FacultyInfoPanelProps> = ({
 
           {/* Section 2: Teaching Faculty Members & Assessors */}
           <div className="space-y-3 pt-2 border-t border-slate-200/80">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-indigo-600" />
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                   Teaching Faculty, Trainers &amp; Assessors ({facultyInfo.staffMembers.length})
                 </h4>
               </div>
-              <button
-                type="button"
-                onClick={handleAddStaff}
-                data-agent-id="course-builder-add-staff-bottom-btn"
-                data-testid="add-staff-bottom-btn"
-                aria-label="Add Teaching Staff Member"
-                className="px-2 py-1 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded text-[11px] font-bold flex items-center gap-1 shadow-2xs"
-              >
-                <Plus className="w-3 h-3 text-indigo-600" />
-                <span>+ Add Staff Member</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Search Registered Staff by Name / Last Name (does not automatically give names) */}
+                <div
+                  ref={searchContainerRef}
+                  className="relative"
+                  data-testid="course-builder-staff-dropdown"
+                  data-agent-id="course-builder-staff-search-container"
+                >
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 text-indigo-500 absolute left-2.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={staffSearchQuery}
+                      onChange={(e) => {
+                        setStaffSearchQuery(e.target.value);
+                        setIsSearchOpen(true);
+                      }}
+                      onFocus={() => setIsSearchOpen(true)}
+                      placeholder="+ Search by name or last name..."
+                      aria-label="Select Registered Staff Member to Auto-Add"
+                      data-testid="course-builder-staff-search-input"
+                      data-agent-id="course-builder-staff-search-input"
+                      className="bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-lg pl-8 pr-7 py-1 text-xs font-bold placeholder:text-indigo-400 placeholder:font-normal focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400/30 cursor-text shadow-2xs w-60 sm:w-72 transition-all"
+                    />
+                    {staffSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStaffSearchQuery('');
+                          setIsSearchOpen(false);
+                        }}
+                        aria-label="Clear staff search"
+                        className="absolute right-2 p-0.5 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown Results (Visible ONLY when user searches or focuses) */}
+                  {isSearchOpen && (
+                    <div
+                      data-testid="course-builder-staff-search-results"
+                      className="absolute right-0 sm:left-0 mt-1.5 w-72 sm:w-80 bg-white rounded-xl shadow-xl border border-indigo-100 overflow-hidden z-50 text-slate-800 divide-y divide-slate-100"
+                    >
+                      {staffSearchQuery.trim() === '' ? (
+                        <div className="p-3 text-center space-y-1">
+                          <p className="text-[11px] font-bold text-slate-700">
+                            Search Registered Staff
+                          </p>
+                          <p className="text-[10px] text-slate-400 leading-tight">
+                            Start entering a first name or last name to search and auto-add staff (e.g. Sterling, Chen, Rostova, Thorne).
+                          </p>
+                        </div>
+                      ) : filteredTeachingStaff.length === 0 ? (
+                        <div className="p-3 text-center space-y-0.5">
+                          <p className="text-xs font-bold text-slate-700">No staff found</p>
+                          <p className="text-[10px] text-slate-400">
+                            No registered staff matching &ldquo;{staffSearchQuery}&rdquo;. Try another name or last name.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">
+                          <div className="px-2.5 py-1.5 bg-slate-50 text-[10px] font-bold text-indigo-900 uppercase tracking-wider flex items-center justify-between">
+                            <span>Matching Registered Staff ({filteredTeachingStaff.length})</span>
+                            <span className="text-[9px] text-slate-400 lowercase font-normal">click to auto-add</span>
+                          </div>
+                          {filteredTeachingStaff.map((cand) => (
+                            <button
+                              key={cand.id}
+                              type="button"
+                              onClick={() => handleSelectStaff(cand)}
+                              data-testid={`staff-search-result-${cand.id}`}
+                              className="w-full text-left p-2.5 hover:bg-indigo-50/70 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                {cand.fullName.charAt(0)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-bold text-slate-900 group-hover:text-indigo-900">
+                                    {cand.fullName}
+                                  </span>
+                                  <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-indigo-50 border border-indigo-200 text-indigo-700">
+                                    {cand.role}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 truncate">
+                                  {cand.appointmentTitle}
+                                </p>
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {cand.department}
+                                </p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddStaff}
+                  data-agent-id="course-builder-add-staff-bottom-btn"
+                  data-testid="add-staff-bottom-btn"
+                  aria-label="Add Teaching Staff Member"
+                  className="px-2 py-1 bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-200 rounded text-[11px] font-bold flex items-center gap-1 shadow-2xs shrink-0 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3 text-indigo-600" />
+                  <span>Manual</span>
+                </button>
+              </div>
             </div>
 
             {facultyInfo.staffMembers.length === 0 ? (
@@ -469,6 +657,11 @@ export const FacultyInfoPanel: React.FC<FacultyInfoPanelProps> = ({
                           <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-800 font-bold text-[10px] flex items-center justify-center shrink-0">
                             {idx + 1}
                           </span>
+                          <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.2 rounded uppercase tracking-wider">
+                            Information Postcard
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
                           <input
                             type="text"
                             value={staff.name}

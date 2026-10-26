@@ -1,4 +1,5 @@
 import type { CourseAssessment } from './rubrics.ts';
+import type { UnitEnrolledStudent } from './studentEnrolment.ts';
 
 export interface LessonBlockLink {
   id: string;
@@ -79,6 +80,90 @@ export function createPerformanceCriterion(
   };
 }
 
+export function getUniqueElementsFromUnit(unit: CourseUnit): string[] {
+  const criteria = unit.performanceCriteria || [];
+  const elements: string[] = [];
+  for (const c of criteria) {
+    const el = c.element?.trim() || 'Element 1: Core Performance Requirements';
+    if (!elements.includes(el)) {
+      elements.push(el);
+    }
+  }
+  if (elements.length === 0) {
+    elements.push('Element 1: Core Performance Requirements');
+  }
+  return elements;
+}
+
+export function addElementToUnit(
+  unit: CourseUnit,
+  customElementTitle?: string
+): { updatedUnit: CourseUnit; newCriterion: UnitPerformanceCriterion } {
+  const existingCriteria = [...(unit.performanceCriteria || [])];
+  const uniqueElements = getUniqueElementsFromUnit(unit);
+  const nextElementNum = uniqueElements.length + 1;
+  const elementTitle =
+    customElementTitle?.trim() ||
+    `Element ${nextElementNum}: Specialized Competency & Operational Practice`;
+  const code = `${nextElementNum}.1`;
+
+  const newCriterion: UnitPerformanceCriterion = {
+    id: `pc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    element: elementTitle,
+    code,
+    title: `Apply principles of ${elementTitle.replace(/^Element\s*\d+\s*:\s*/i, '')}`,
+    description: `Consistently demonstrate and apply skills required to satisfy the benchmark for ${elementTitle}.`
+  };
+
+  existingCriteria.push(newCriterion);
+  return {
+    updatedUnit: {
+      ...unit,
+      performanceCriteria: existingCriteria
+    },
+    newCriterion
+  };
+}
+
+export function addCriterionToElement(
+  unit: CourseUnit,
+  elementTitle: string,
+  customTitle?: string
+): { updatedUnit: CourseUnit; newCriterion: UnitPerformanceCriterion } {
+  const existingCriteria = [...(unit.performanceCriteria || [])];
+  const targetElement = elementTitle.trim();
+  const elementCriteria = existingCriteria.filter(
+    (c) => (c.element || '').trim().toLowerCase() === targetElement.toLowerCase()
+  );
+
+  const elemMatch = targetElement.match(/Element\s*(\d+)/i);
+  const uniqueElements = getUniqueElementsFromUnit(unit);
+  const elemIndex = uniqueElements.findIndex(
+    (e) => e.trim().toLowerCase() === targetElement.toLowerCase()
+  );
+  const elemNum = elemMatch ? elemMatch[1] : `${elemIndex !== -1 ? elemIndex + 1 : 1}`;
+  const nextCritNum = elementCriteria.length + 1;
+  const code = `${elemNum}.${nextCritNum}`;
+
+  const newCriterion: UnitPerformanceCriterion = {
+    id: `pc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    element: targetElement,
+    code,
+    title: customTitle || `Performance Criterion ${code}`,
+    description: `Demonstrate compliance and competency in accordance with ${targetElement} standards.`
+  };
+
+  existingCriteria.push(newCriterion);
+  return {
+    updatedUnit: {
+      ...unit,
+      performanceCriteria: existingCriteria
+    },
+    newCriterion
+  };
+}
+
+
 export interface CourseUnit {
   id: string;
   unitCode: string;
@@ -94,6 +179,7 @@ export interface CourseUnit {
     blocks: LessonBlock[];
   }[];
   assessments: CourseAssessment[];
+  enrolledStudents?: UnitEnrolledStudent[];
 }
 
 export function createDefaultUnit(customCode?: string, customTitle?: string): CourseUnit {

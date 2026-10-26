@@ -28,10 +28,13 @@ import {
   Video,
   FileText,
   Play,
-  ExternalLink
+  ExternalLink,
+  Laptop,
+  HeartHandshake
 } from 'lucide-react';
 import { CourseProgram, COURSES_DATA } from '@/data/courses';
 import { UnitDetail, UNITS_DATA } from '@/data/units';
+import { getStoredUnitSyllabi } from '@/lib/courseBuilder/unitBank';
 import { NavTab } from '@/components/Navbar';
 import { SevereEmergencyModal } from '@/components/emergency/SevereEmergencyModal';
 
@@ -171,15 +174,35 @@ export const HomeView: React.FC<HomeViewProps> = ({
     };
   }, []);
 
-  // Dynamic Front-Page Campus Metrics (Adjustable via Admin Panel)
+  // Dynamic Front-Page Campus Metrics (Adjustable via Admin Panel - 100% customizable & optional)
   const [campusMetrics, setCampusMetrics] = useState({
     heroBadgeText: 'Your Future is Now • Powered by Gemini',
+    // Box 1: Total Students
     totalStudents: '5,000+',
-    placementRate: '96%',
-    facultyStaff: '350+',
+    studentsTitle: 'Total Students',
     studentsSubtitle: 'Active learners across all faculties',
+    showTotalStudents: true,
+    // Box 2: Graduate Placement
+    placementRate: '96%',
+    placementTitle: 'Graduate Placement',
     placementSubtitle: 'Graduate employment within 90 days',
+    showPlacementRate: true,
+    // Box 3: Faculty & Staff
+    facultyStaff: '350+',
+    facultyTitle: 'Faculty & Admin Staff',
     facultySubtitle: 'Academic educators & operational staff',
+    showFacultyStaff: true,
+    // Box 4: Online Courses
+    onlineCourses: '120+',
+    onlineCoursesTitle: 'Online Courses',
+    onlineCoursesSubtitle: 'Flexible remote & self-paced credential pathways',
+    showOnlineCourses: true,
+    // Box 5: Community Courses
+    communityCourses: '45+',
+    communityCoursesTitle: 'Community Courses',
+    communityCoursesSubtitle: 'Regional outreach & adult vocational learning',
+    showCommunityCourses: true,
+    // Emergency Broadcast
     emergencyAlert: '',
     emergencyTitle: '',
     emergencyActive: false,
@@ -250,20 +273,50 @@ export const HomeView: React.FC<HomeViewProps> = ({
     }
   };
 
-  const formatStudents = (val?: string) => {
+  const formatStudents = (val?: string, customTitle?: string) => {
     const raw = (val || '5,000+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Total Students') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
     return raw.toLowerCase().includes('student') ? raw : `${raw} Students`;
   };
-  const formatPlacement = (val?: string) => {
+  const formatPlacement = (val?: string, customTitle?: string) => {
     const raw = (val || '96%').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Graduate Placement') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
     return raw.toLowerCase().includes('placement') ? raw : `${raw} Placement`;
   };
-  const formatFaculty = (val?: string) => {
+  const formatFaculty = (val?: string, customTitle?: string) => {
     const raw = (val || '350+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Faculty & Admin Staff') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
     return raw.toLowerCase().includes('faculty') || raw.toLowerCase().includes('staff')
       ? raw
       : `${raw} Faculty & Staff`;
   };
+  const formatOnline = (val?: string, customTitle?: string) => {
+    const raw = (val || '120+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Online Courses') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
+    return raw.toLowerCase().includes('course') ? raw : `${raw} Online Courses`;
+  };
+  const formatCommunity = (val?: string, customTitle?: string) => {
+    const raw = (val || '45+').trim();
+    if (customTitle && customTitle.trim() && customTitle.trim() !== 'Community Courses') {
+      return raw.toLowerCase().includes(customTitle.toLowerCase()) ? raw : `${raw} ${customTitle.trim()}`;
+    }
+    return raw.toLowerCase().includes('course') ? raw : `${raw} Community Courses`;
+  };
+
+  const hasVisibleMetrics =
+    (campusMetrics.showTotalStudents ?? true) ||
+    (campusMetrics.showPlacementRate ?? true) ||
+    (campusMetrics.showFacultyStaff ?? true) ||
+    (campusMetrics.showOnlineCourses ?? true) ||
+    (campusMetrics.showCommunityCourses ?? true);
 
   // Helper to shuffle and pick N items
   const shuffleAndPick = <T,>(arr: T[], n: number): T[] => {
@@ -278,13 +331,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
     setFeaturedDegrees(shuffleAndPick(filtered, 2));
   };
 
+  // Seed with UNITS_DATA so server and client first render match; stored units load in the effect below.
+  const [bankUnits, setBankUnits] = useState<UnitDetail[]>(UNITS_DATA);
+
   const reshuffleSyllabi = () => {
-    setFeaturedSyllabi(shuffleAndPick(UNITS_DATA, 2));
+    const currentBank = getStoredUnitSyllabi();
+    setBankUnits(currentBank);
+    setFeaturedSyllabi(shuffleAndPick(currentBank, 2));
   };
 
   useEffect(() => {
     reshuffleDegrees();
     reshuffleSyllabi();
+
+    const handleUnitsUpdated = (e: any) => {
+      const allUnits = e.detail?.allUnits || getStoredUnitSyllabi();
+      if (allUnits && allUnits.length > 0) {
+        setBankUnits(allUnits);
+        setFeaturedSyllabi(shuffleAndPick(allUnits, 2));
+      }
+    };
+    window.addEventListener('edupulse_units_updated', handleUnitsUpdated);
+    return () => window.removeEventListener('edupulse_units_updated', handleUnitsUpdated);
   }, [degreeFilter]);
 
   // Real-time live filtered degrees/syllabi if query is present
@@ -297,7 +365,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
     : featuredDegrees;
 
   const displayedSyllabi = searchQuery.trim()
-    ? UNITS_DATA.filter(u =>
+    ? bankUnits.filter(u =>
       u.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.overview.toLowerCase().includes(searchQuery.toLowerCase())
@@ -370,41 +438,99 @@ export const HomeView: React.FC<HomeViewProps> = ({
         />
         <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-indigo-950/85 to-slate-900/50" />
 
-        {/* Floating Quick Stats (Desktop) - Evenly spread top to down */}
-        <div className="hidden lg:flex flex-col justify-between absolute right-8 xl:right-10 top-10 bottom-10 z-20 w-72 xl:w-80 py-1">
-          {/* Box 1: Students */}
-          <div className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-4 rounded-2xl text-white shadow-xl space-y-1.5 transform hover:scale-105 transition-all hover:bg-slate-800/90 hover:border-white/25">
-            <div className="flex items-center gap-2.5 text-indigo-300 font-extrabold text-base">
-              <Users className="w-5 h-5 text-indigo-400 shrink-0" />
-              <span className="tracking-tight">{formatStudents(campusMetrics.totalStudents)}</span>
-            </div>
-            <p className="text-xs text-slate-300 leading-snug">
-              {campusMetrics.studentsSubtitle || 'Active learners across all faculties'}
-            </p>
-          </div>
+        {/* Floating Quick Stats (Desktop) - Dynamic 5-box stats (100% customizable & optional) */}
+        {hasVisibleMetrics && (
+          <div
+            data-testid="hero-desktop-metrics"
+            data-agent-id="hero-desktop-metrics"
+            className="hidden lg:flex flex-col justify-center gap-2 xl:gap-2.5 absolute right-6 xl:right-10 top-6 bottom-6 z-20 w-72 xl:w-80 py-2"
+          >
+            {/* Box 1: Students */}
+            {(campusMetrics.showTotalStudents ?? true) && (
+              <div
+                data-testid="metric-box-students"
+                data-agent-id="metric-box-students"
+                className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 xl:p-3.5 rounded-2xl text-white shadow-xl space-y-0.5 xl:space-y-1 transform hover:scale-102 transition-all hover:bg-slate-800/90 hover:border-white/25"
+              >
+                <div className="flex items-center gap-2 text-indigo-300 font-extrabold text-sm xl:text-base">
+                  <Users className="w-4 h-4 xl:w-5 xl:h-5 text-indigo-400 shrink-0" />
+                  <span className="tracking-tight">{formatStudents(campusMetrics.totalStudents, campusMetrics.studentsTitle)}</span>
+                </div>
+                <p className="text-[11px] xl:text-xs text-slate-300 leading-tight">
+                  {campusMetrics.studentsSubtitle || 'Active learners across all faculties'}
+                </p>
+              </div>
+            )}
 
-          {/* Box 2: Graduate Placement */}
-          <div className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-4 rounded-2xl text-white shadow-xl space-y-1.5 transform hover:scale-105 transition-all hover:bg-slate-800/90 hover:border-white/25">
-            <div className="flex items-center gap-2.5 text-emerald-400 font-extrabold text-base">
-              <TrendingUp className="w-5 h-5 text-emerald-400 shrink-0" />
-              <span className="tracking-tight">{formatPlacement(campusMetrics.placementRate)}</span>
-            </div>
-            <p className="text-xs text-slate-300 leading-snug">
-              {campusMetrics.placementSubtitle || 'Graduate employment within 90 days'}
-            </p>
-          </div>
+            {/* Box 2: Graduate Placement */}
+            {(campusMetrics.showPlacementRate ?? true) && (
+              <div
+                data-testid="metric-box-placement"
+                data-agent-id="metric-box-placement"
+                className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 xl:p-3.5 rounded-2xl text-white shadow-xl space-y-0.5 xl:space-y-1 transform hover:scale-102 transition-all hover:bg-slate-800/90 hover:border-white/25"
+              >
+                <div className="flex items-center gap-2 text-emerald-400 font-extrabold text-sm xl:text-base">
+                  <TrendingUp className="w-4 h-4 xl:w-5 xl:h-5 text-emerald-400 shrink-0" />
+                  <span className="tracking-tight">{formatPlacement(campusMetrics.placementRate, campusMetrics.placementTitle)}</span>
+                </div>
+                <p className="text-[11px] xl:text-xs text-slate-300 leading-tight">
+                  {campusMetrics.placementSubtitle || 'Graduate employment within 90 days'}
+                </p>
+              </div>
+            )}
 
-          {/* Box 3: Total Faculty and Admin Staff */}
-          <div className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-4 rounded-2xl text-white shadow-xl space-y-1.5 transform hover:scale-105 transition-all hover:bg-slate-800/90 hover:border-white/25">
-            <div className="flex items-center gap-2.5 text-amber-300 font-extrabold text-base">
-              <GraduationCap className="w-5 h-5 text-amber-400 shrink-0" />
-              <span className="tracking-tight">{formatFaculty(campusMetrics.facultyStaff)}</span>
-            </div>
-            <p className="text-xs text-slate-300 leading-snug">
-              {campusMetrics.facultySubtitle || 'Academic educators & operational staff'}
-            </p>
+            {/* Box 3: Total Faculty and Admin Staff */}
+            {(campusMetrics.showFacultyStaff ?? true) && (
+              <div
+                data-testid="metric-box-faculty"
+                data-agent-id="metric-box-faculty"
+                className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 xl:p-3.5 rounded-2xl text-white shadow-xl space-y-0.5 xl:space-y-1 transform hover:scale-102 transition-all hover:bg-slate-800/90 hover:border-white/25"
+              >
+                <div className="flex items-center gap-2 text-amber-300 font-extrabold text-sm xl:text-base">
+                  <GraduationCap className="w-4 h-4 xl:w-5 xl:h-5 text-amber-400 shrink-0" />
+                  <span className="tracking-tight">{formatFaculty(campusMetrics.facultyStaff, campusMetrics.facultyTitle)}</span>
+                </div>
+                <p className="text-[11px] xl:text-xs text-slate-300 leading-tight">
+                  {campusMetrics.facultySubtitle || 'Academic educators & operational staff'}
+                </p>
+              </div>
+            )}
+
+            {/* Box 4: Online Courses */}
+            {(campusMetrics.showOnlineCourses ?? true) && (
+              <div
+                data-testid="metric-box-online-courses"
+                data-agent-id="metric-box-online-courses"
+                className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 xl:p-3.5 rounded-2xl text-white shadow-xl space-y-0.5 xl:space-y-1 transform hover:scale-102 transition-all hover:bg-slate-800/90 hover:border-white/25"
+              >
+                <div className="flex items-center gap-2 text-sky-300 font-extrabold text-sm xl:text-base">
+                  <Laptop className="w-4 h-4 xl:w-5 xl:h-5 text-sky-400 shrink-0" />
+                  <span className="tracking-tight">{formatOnline(campusMetrics.onlineCourses, campusMetrics.onlineCoursesTitle)}</span>
+                </div>
+                <p className="text-[11px] xl:text-xs text-slate-300 leading-tight">
+                  {campusMetrics.onlineCoursesSubtitle || 'Flexible remote & self-paced credential pathways'}
+                </p>
+              </div>
+            )}
+
+            {/* Box 5: Community Courses */}
+            {(campusMetrics.showCommunityCourses ?? true) && (
+              <div
+                data-testid="metric-box-community-courses"
+                data-agent-id="metric-box-community-courses"
+                className="bg-slate-900/85 backdrop-blur-md border border-white/15 p-3 xl:p-3.5 rounded-2xl text-white shadow-xl space-y-0.5 xl:space-y-1 transform hover:scale-102 transition-all hover:bg-slate-800/90 hover:border-white/25"
+              >
+                <div className="flex items-center gap-2 text-purple-300 font-extrabold text-sm xl:text-base">
+                  <HeartHandshake className="w-4 h-4 xl:w-5 xl:h-5 text-purple-400 shrink-0" />
+                  <span className="tracking-tight">{formatCommunity(campusMetrics.communityCourses, campusMetrics.communityCoursesTitle)}</span>
+                </div>
+                <p className="text-[11px] xl:text-xs text-slate-300 leading-tight">
+                  {campusMetrics.communityCoursesSubtitle || 'Regional outreach & adult vocational learning'}
+                </p>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Hero Content */}
         <div className="relative z-10 p-6 sm:p-10 md:p-14 max-w-3xl text-white space-y-6">
@@ -473,38 +599,79 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </div>
 
-          {/* Mobile Quick Stats Strip (Under lg) */}
-          <div className="lg:hidden grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-4 border-t border-white/10 mt-3">
-            <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
-              <div className="flex items-center gap-1.5 text-indigo-300 font-extrabold text-sm">
-                <Users className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span>{formatStudents(campusMetrics.totalStudents)}</span>
-              </div>
-              <p className="text-[10px] text-slate-300 line-clamp-1">
-                {campusMetrics.studentsSubtitle || 'Active learners across all faculties'}
-              </p>
-            </div>
+          {/* Mobile Quick Stats Strip (Under lg) - Dynamic 5-box stats (100% customizable & optional) */}
+          {hasVisibleMetrics && (
+            <div
+              data-testid="hero-mobile-metrics"
+              data-agent-id="hero-mobile-metrics"
+              className="lg:hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-4 border-t border-white/10 mt-3"
+            >
+              {/* Box 1: Students */}
+              {(campusMetrics.showTotalStudents ?? true) && (
+                <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-indigo-300 font-extrabold text-sm">
+                    <Users className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <span>{formatStudents(campusMetrics.totalStudents, campusMetrics.studentsTitle)}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 line-clamp-1">
+                    {campusMetrics.studentsSubtitle || 'Active learners across all faculties'}
+                  </p>
+                </div>
+              )}
 
-            <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
-              <div className="flex items-center gap-1.5 text-emerald-300 font-extrabold text-sm">
-                <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{formatPlacement(campusMetrics.placementRate)}</span>
-              </div>
-              <p className="text-[10px] text-slate-300 line-clamp-1">
-                {campusMetrics.placementSubtitle || 'Graduate employment within 90 days'}
-              </p>
-            </div>
+              {/* Box 2: Graduate Placement */}
+              {(campusMetrics.showPlacementRate ?? true) && (
+                <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-emerald-300 font-extrabold text-sm">
+                    <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>{formatPlacement(campusMetrics.placementRate, campusMetrics.placementTitle)}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 line-clamp-1">
+                    {campusMetrics.placementSubtitle || 'Graduate employment within 90 days'}
+                  </p>
+                </div>
+              )}
 
-            <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
-              <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-sm">
-                <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{formatFaculty(campusMetrics.facultyStaff)}</span>
-              </div>
-              <p className="text-[10px] text-slate-300 line-clamp-1">
-                {campusMetrics.facultySubtitle || 'Academic educators & operational staff'}
-              </p>
+              {/* Box 3: Total Faculty and Admin Staff */}
+              {(campusMetrics.showFacultyStaff ?? true) && (
+                <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-sm">
+                    <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>{formatFaculty(campusMetrics.facultyStaff, campusMetrics.facultyTitle)}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 line-clamp-1">
+                    {campusMetrics.facultySubtitle || 'Academic educators & operational staff'}
+                  </p>
+                </div>
+              )}
+
+              {/* Box 4: Online Courses */}
+              {(campusMetrics.showOnlineCourses ?? true) && (
+                <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-sky-300 font-extrabold text-sm">
+                    <Laptop className="w-4 h-4 text-sky-400 shrink-0" />
+                    <span>{formatOnline(campusMetrics.onlineCourses, campusMetrics.onlineCoursesTitle)}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 line-clamp-1">
+                    {campusMetrics.onlineCoursesSubtitle || 'Flexible remote & self-paced credential pathways'}
+                  </p>
+                </div>
+              )}
+
+              {/* Box 5: Community Courses */}
+              {(campusMetrics.showCommunityCourses ?? true) && (
+                <div className="bg-white/10 backdrop-blur-md border border-white/15 p-3 rounded-xl text-white space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-purple-300 font-extrabold text-sm">
+                    <HeartHandshake className="w-4 h-4 text-purple-400 shrink-0" />
+                    <span>{formatCommunity(campusMetrics.communityCourses, campusMetrics.communityCoursesTitle)}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-300 line-clamp-1">
+                    {campusMetrics.communityCoursesSubtitle || 'Regional outreach & adult vocational learning'}
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </section>
 
@@ -704,7 +871,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 flex items-center gap-2">
               Featured Unit Syllabi
               <span className="text-xs bg-indigo-100 text-indigo-700 font-bold px-2.5 py-0.5 rounded-full">
-                Showing {displayedSyllabi.length} of {UNITS_DATA.length}
+                Showing {displayedSyllabi.length} of {bankUnits.length}
               </span>
             </h2>
           </div>

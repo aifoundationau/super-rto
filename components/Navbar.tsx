@@ -4,14 +4,15 @@ import {
   Bot,
   BookOpen,
   GraduationCap,
-  Layers,
   FileText,
   Calendar,
   Sparkles,
   ChevronDown,
-  ShieldCheck
+  ShieldCheck,
+  Coins
 } from 'lucide-react';
 import { isProjectOwnerEmail } from '@/lib/auth/roles';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 export type NavTab = 'home' | 'courses' | 'units' | 'builder' | 'application' | 'events' | 'chat' | 'admin' | 'signin';
 
@@ -22,6 +23,7 @@ interface NavbarProps {
   currentUser?: any;
   onGoogleSignIn?: () => void;
   onLogout?: () => void;
+  onOpenTokens?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -31,9 +33,41 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   onGoogleSignIn,
   onLogout,
+  onOpenTokens,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [isSharedMaster, setIsSharedMaster] = useState<boolean>(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Fetch live token balance & listen for updates
+  useEffect(() => {
+    let isMounted = true;
+    const fetchBalance = async () => {
+      try {
+        const email = currentUser?.email || '';
+        const uid = currentUser?.uid || '';
+        const res = await fetch(`/api/tokens/balance?userEmail=${encodeURIComponent(email)}&userId=${encodeURIComponent(uid)}`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setTokenBalance(typeof data.balance === 'number' ? data.balance : null);
+          setIsSharedMaster(data.isSuperAdmin === true || data.isSharedWallet === true);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch token balance:', err);
+      }
+    };
+
+    fetchBalance();
+    const handleBalanceUpdate = () => {
+      fetchBalance();
+    };
+    window.addEventListener('super_rto_tokens_updated', handleBalanceUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('super_rto_tokens_updated', handleBalanceUpdate);
+    };
+  }, [currentUser?.email, currentUser?.uid]);
 
   // Close user dropdown menu when clicking outside
   useEffect(() => {
@@ -51,8 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navItems = [
     { id: 'home' as NavTab, label: 'Home', icon: Home },
     { id: 'courses' as NavTab, label: 'Degree Programs', icon: GraduationCap },
-    { id: 'units' as NavTab, label: 'Unit Syllabuses', icon: BookOpen },
-    { id: 'builder' as NavTab, label: 'Course Builder', icon: Layers },
+    { id: 'units' as NavTab, label: 'Unit Syllabi', icon: BookOpen },
     { id: 'application' as NavTab, label: 'Application Form', icon: FileText },
     { id: 'events' as NavTab, label: 'Events & Calendar', icon: Calendar },
     { id: 'chat' as NavTab, label: 'AI Assist', icon: Bot },
@@ -110,6 +143,33 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Action Icons */}
         <div className="flex items-center gap-2">
+          {/* Tokens / Community Fund Button */}
+          <button
+            type="button"
+            onClick={onOpenTokens}
+            data-agent-id="navbar-tokens-button"
+            data-testid="navbar-tokens-btn"
+            aria-label="Community Token Fund and Buy Tokens"
+            className="px-3 py-1.5 bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 hover:from-amber-500/20 hover:to-amber-500/30 text-amber-950 border border-amber-300/80 hover:border-amber-400 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer group shrink-0"
+            title={
+              tokenBalance !== null
+                ? `${tokenBalance.toLocaleString()} Tokens available${isSharedMaster ? ' (Master Superadmin Pool)' : ''}`
+                : 'EduPulse AI Tokens: 1 Token = $1.54 AUD / $1.00 USD. Contribute to the Community Token Fund or buy tokens via Stripe.'
+            }
+          >
+            <Coins className="w-4 h-4 text-amber-600 group-hover:scale-110 transition-transform animate-pulse shrink-0" />
+            <span className="font-extrabold tracking-tight">
+              {tokenBalance !== null ? `${tokenBalance.toLocaleString()} 🪙` : 'Tokens'}
+            </span>
+            <span className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-black rounded-md bg-amber-400 text-slate-950 uppercase tracking-wider">
+              {isSharedMaster ? 'Master' : 'Fund'}
+            </span>
+          </button>
+
+          {currentUser?.email && (
+            <NotificationBell userEmail={currentUser.email} onOpenNotification={() => onSelectTab('admin')} />
+          )}
+
           {currentUser ? (
             <div className="relative" ref={userMenuRef}>
               <button
@@ -231,6 +291,19 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile Navigation Scrollable Bar */}
       <div className="lg:hidden px-4 py-2 border-t border-slate-100 overflow-x-auto bg-slate-50">
         <div className="flex items-center gap-1.5 min-w-max">
+          {/* Mobile Tokens Button */}
+          <button
+            type="button"
+            onClick={onOpenTokens}
+            data-agent-id="mobile-navbar-tokens-btn"
+            data-testid="mobile-navbar-tokens-btn"
+            aria-label="Tokens & Community Fund"
+            className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200 cursor-pointer"
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-700" />
+            <span>{tokenBalance !== null ? `${tokenBalance.toLocaleString()} 🪙` : '🪙 Tokens'}</span>
+          </button>
+
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;

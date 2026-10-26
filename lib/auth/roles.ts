@@ -22,11 +22,16 @@ export const SYSTEM_ROLES = [
   'director',
   'chancellor',
   'president',
+  'vice_president',
   'ceo',
   'coo',
   'cfo',
+  'cto',
+  'tech_admin',
+  'admin',
   'accounting',
   'administration',
+  'student_counsellor',
   'teacher',
   'student',
   'supporter',
@@ -86,6 +91,16 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleMeta> = {
     badgeBorder: 'border-sky-700',
     hierarchyLevel: 85,
   },
+  vice_president: {
+    role: 'vice_president',
+    label: 'Vice President',
+    category: 'Executive',
+    description: 'Vice President supporting executive governance, faculty portfolios, and institutional partnerships.',
+    badgeBg: 'bg-teal-700',
+    badgeText: 'text-white',
+    badgeBorder: 'border-teal-800',
+    hierarchyLevel: 82,
+  },
   ceo: {
     role: 'ceo',
     label: 'CEO',
@@ -116,6 +131,36 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleMeta> = {
     badgeBorder: 'border-emerald-800',
     hierarchyLevel: 70,
   },
+  cto: {
+    role: 'cto',
+    label: 'CTO',
+    category: 'Executive',
+    description: 'Chief Technology Officer directing core infrastructure, AI architecture, LMS technology, and systems security.',
+    badgeBg: 'bg-violet-700',
+    badgeText: 'text-white',
+    badgeBorder: 'border-violet-800',
+    hierarchyLevel: 68,
+  },
+  tech_admin: {
+    role: 'tech_admin',
+    label: 'Tech Admin',
+    category: 'Operations',
+    description: 'Technical Administrator managing cloud instances, permissions, integrations, and server infrastructure.',
+    badgeBg: 'bg-slate-800',
+    badgeText: 'text-white',
+    badgeBorder: 'border-slate-900',
+    hierarchyLevel: 65,
+  },
+  admin: {
+    role: 'admin',
+    label: 'Institutional Admin',
+    category: 'Operations',
+    description: 'Institutional Administrator managing cross-faculty operations, staff records, and permissions.',
+    badgeBg: 'bg-blue-800',
+    badgeText: 'text-white',
+    badgeBorder: 'border-blue-900',
+    hierarchyLevel: 62,
+  },
   accounting: {
     role: 'accounting',
     label: 'Accounting',
@@ -135,6 +180,16 @@ export const ROLE_DEFINITIONS: Record<SystemRole, RoleMeta> = {
     badgeText: 'text-white',
     badgeBorder: 'border-slate-800',
     hierarchyLevel: 50,
+  },
+  student_counsellor: {
+    role: 'student_counsellor',
+    label: 'Student Counsellor',
+    category: 'Operations',
+    description: 'Certified student counsellor supporting learner mental health, crisis protocols, and academic wellbeing.',
+    badgeBg: 'bg-pink-600',
+    badgeText: 'text-white',
+    badgeBorder: 'border-pink-700',
+    hierarchyLevel: 45,
   },
   teacher: {
     role: 'teacher',
@@ -179,12 +234,16 @@ export function normalizeRole(rawRole: string | null | undefined): SystemRole {
   if (!rawRole) return DEFAULT_REGISTRATION_ROLE;
   const lower = rawRole.toLowerCase().trim();
 
-  // Legacy mappings
-  if (lower === 'admin' || lower === 'super_admin' || lower === 'superadmin') return 'superadmin';
+  // Role aliases and legacy mappings
+  if (lower === 'super_admin' || lower === 'superadmin') return 'superadmin';
   if (lower === 'dean' || lower === 'principal' || lower === 'director' || lower === 'executive_director') return 'director';
-  if (lower === 'academic_staff' || lower === 'faculty' || lower === 'instructor' || lower === 'assessor') return 'teacher';
+  if (lower === 'academic_staff' || lower === 'faculty' || lower === 'instructor' || lower === 'assessor' || lower === 'trainer') return 'teacher';
   if (lower === 'registrar') return 'administration';
   if (lower === 'finance') return 'accounting';
+  if (lower === 'vp' || lower === 'vice president' || lower === 'vice_president') return 'vice_president';
+  if (lower === 'chief_technology_officer') return 'cto';
+  if (lower === 'tech admin' || lower === 'sysadmin' || lower === 'systems_admin') return 'tech_admin';
+  if (lower === 'student counsellor' || lower === 'student counselor' || lower === 'counsellor' || lower === 'counselor') return 'student_counsellor';
 
   if (isValidRole(lower)) {
     return lower;
@@ -209,8 +268,12 @@ export function isDirector(rawRole: string | null | undefined): boolean {
   return norm === 'director' || norm === 'superadmin';
 }
 
+export const PRIMARY_SUPERADMIN_EMAIL = 'support@aifoundation.net.au';
+export const SECONDARY_SUPERADMIN_EMAIL = 'davidrobertson.info@gmail.com';
+export const SUPERADMIN_SHARED_WALLET_DOC = 'superadmin_shared';
+
 /**
- * Checks if an email address is strictly a verified Project Owner.
+ * Checks if an email address is strictly a verified Project Owner / Superadmin.
  */
 export function isProjectOwnerEmail(email?: string | null): boolean {
   if (!email) return false;
@@ -232,11 +295,10 @@ export function isProjectOwnerEmail(email?: string | null): boolean {
   }
 
   const strictProjectOwners = [
-    'admin@aifoundation.net.au',
-    'support@aifoundation.net.au',
-    'eleanor.vance@edupulse.edu.au',
-    'davidrobertson.info@gmail.com',
+    PRIMARY_SUPERADMIN_EMAIL,
+    SECONDARY_SUPERADMIN_EMAIL
   ];
 
   return strictProjectOwners.includes(cleanEmail);
 }
+

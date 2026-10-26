@@ -29,7 +29,8 @@ import {
   ChevronRight,
   ExternalLink,
   Briefcase,
-  Rocket
+  Rocket,
+  FolderCheck
 } from 'lucide-react';
 
 interface ApplicationDetailModalProps {
@@ -754,6 +755,28 @@ ${allAcademicAudits.length > 0 ? allAcademicAudits.map((a, idx) => `  [Document 
                       <p>{identityVerificationAudit.legitimacyNotes}</p>
                     </div>
 
+                    {identityVerificationAudit.driveFileUrl && (
+                      <div className="p-2 bg-indigo-50/80 rounded-xl border border-indigo-100 text-indigo-950 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <FolderCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span className="font-semibold">Archived in Google Drive:</span>
+                          <span className="font-mono text-[10px] text-indigo-700 font-bold">
+                            {identityVerificationAudit.driveFolderPath || '0AB6rUwSYF0xlUk9PVA'}
+                          </span>
+                        </div>
+                        <a
+                          href={identityVerificationAudit.driveFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="link-view-gdrive-identity-modal"
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs hover:shadow-xs transition-all"
+                        >
+                          <span>Open in Drive</span>
+                          <ExternalLink className="w-3 h-3 text-indigo-600" />
+                        </a>
+                      </div>
+                    )}
+
                     <div className="text-[10px] text-slate-400 pt-0.5">
                       Verified: {new Date(identityVerificationAudit.verifiedAt).toLocaleString()}
                     </div>
@@ -839,6 +862,27 @@ ${allAcademicAudits.length > 0 ? allAcademicAudits.map((a, idx) => `  [Document 
                           <span className="font-bold text-slate-900 block mb-0.5">Authenticity Analysis:</span>
                           <p>{audit.legitimacyNotes}</p>
                         </div>
+
+                        {audit.driveFileUrl && (
+                          <div className="p-2 bg-indigo-50/80 rounded-xl border border-indigo-100 text-indigo-950 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <FolderCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                              <span className="font-semibold">Archived in Google Drive:</span>
+                              <span className="font-mono text-[10px] text-indigo-700 font-bold">
+                                {audit.driveFolderPath || '0AB6rUwSYF0xlUk9PVA'}
+                              </span>
+                            </div>
+                            <a
+                              href={audit.driveFileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs hover:shadow-xs transition-all"
+                            >
+                              <span>Open in Drive</span>
+                              <ExternalLink className="w-3 h-3 text-indigo-600" />
+                            </a>
+                          </div>
+                        )}
 
                         <div className="text-[10px] text-slate-400 pt-0.5">
                           Verified: {new Date(audit.verifiedAt).toLocaleString()}

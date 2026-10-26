@@ -5,6 +5,8 @@ import { UnifiedCourseBuilder } from '@/components/courseBuilder/UnifiedCourseBu
 
 interface CourseBuilderViewProps {
   apiKey?: string;
+  currentUserRole?: string;
+  onNavigateToCourses?: () => void;
 }
 
 /**
@@ -13,10 +15,16 @@ interface CourseBuilderViewProps {
  * featuring AQF 1-9 & International frameworks, modular lesson blocks,
  * C / NYC assessment rubrics, and AI Ingestion.
  */
-export const CourseBuilderView: React.FC<CourseBuilderViewProps> = () => {
+export const CourseBuilderView: React.FC<CourseBuilderViewProps> = ({
+  currentUserRole,
+  onNavigateToCourses
+}) => {
   return (
     <div className="space-y-6">
-      <UnifiedCourseBuilder />
+      <UnifiedCourseBuilder
+        currentUserRole={currentUserRole}
+        onNavigateToCourses={onNavigateToCourses}
+      />
     </div>
   );
 };

@@ -14,6 +14,7 @@ import { GoogleClassroomLoginModal, ClassroomUser } from '@/components/auth/Goog
 import { SignInView } from '@/components/auth/SignInView';
 import { Footer } from '@/components/Footer';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
+import { TokenFundModal } from '@/components/tokens/TokenFundModal';
 import { ChatMessage } from '@/lib/agent/engine';
 import { StudentApplication, INITIAL_APPLICATION_STATE } from '@/data/applications';
 import { CourseProgram, COURSES_DATA } from '@/data/courses';
@@ -29,7 +30,7 @@ I am equipped with real-time university databases, AQF / TEQSA / ASQA compliance
 
 - ❓ **University FAQs**: Inquire about admission criteria, scholarships, tuition fees, visa work rights, and campus life.
 - 🎓 **Degree Program Exploration**: Discover accredited qualifications (e.g. *Bachelor of Computer Science, Master of AI, Business Analytics*).
-- 🔬 **Individual Unit Syllabuses**: Inspect unit descriptions, credit points, prerequisites, weekly lecture topics, and assessment structures (e.g. *COMP1001, COMP2004, DATA3001, CYBR2002, AI5001*).
+- 🔬 **Individual Unit Syllabi**: Inspect unit descriptions, credit points, prerequisites, weekly lecture topics, and assessment structures (e.g. *COMP1001, COMP2004, DATA3001, CYBR2002, AI5001*).
 - 🏗️ **LMS Course Builder (PRO-LMS)**: Author AQF Levels 1–9 curricula, competency units, modular lesson blocks, and C / NYC rubrics.
 - 📝 **Live Interactive Application Form**: Let me guide you step-by-step to fill in your application, or edit directly in the portal.
 - 📅 **Admissions Events & Google Calendar**: RSVP for Open Days, campus tours, and 1-on-1 advisor consultations with instant **1-Click Google Calendar sync** & **.ics invitations**!
@@ -48,6 +49,17 @@ export default function HomePage() {
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [isClassroomLoginOpen, setIsClassroomLoginOpen] = useState(false);
   const [classroomUser, setClassroomUser] = useState<ClassroomUser | null>(null);
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+
+  // Check URL params for token fund triggers (e.g. Stripe checkout return)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('open_tokens') === 'true' || params.get('tokens') || params.get('payment_success') === 'true') {
+        setIsTokenModalOpen(true);
+      }
+    }
+  }, []);
 
   const isSuperAdminUser = Boolean(
     classroomUser && (
@@ -56,6 +68,31 @@ export default function HomePage() {
       (classroomUser.role || '').toLowerCase() === 'director'
     )
   );
+
+  // Pull server-side status changes (e.g. 'Enrolled' after staff enrolment) into the locally saved application
+  useEffect(() => {
+    if (!classroomUser?.email) return;
+    let cancelled = false;
+    import('@/lib/firebase/client')
+      .then(({ authenticatedFetch }) => authenticatedFetch('/api/enrolments'))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !Array.isArray(data?.applications)) return;
+        setApplication((prev) => {
+          const serverApp = data.applications.find((a: { id: string }) => a.id === prev.id);
+          if (!serverApp || serverApp.status === prev.status) return prev;
+          const updated = { ...prev, status: serverApp.status };
+          try {
+            localStorage.setItem('edupulse_active_application', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [classroomUser?.email]);
 
   // Track page navigation changes to Firebase
   useEffect(() => {
@@ -442,8 +479,7 @@ export default function HomePage() {
           ? 'I am currently experiencing network latency contacting external AI services. Our complete course catalog and syllabus database are available in the tabs above, or you can try sending your message again shortly.'
           : `I am currently operating in resilient offline advisory mode while server connections synchronize.\n\n` +
             `• 📚 **Degree Programs:** Browse our degrees and entry requirements in the **Degree Programs** tab.\n` +
-            `• 🔬 **Unit Syllabuses:** Inspect full subject descriptions and prerequisites (e.g. *COMP1001, AI5001*) in the **Unit Syllabuses** tab.\n` +
-            `• 🏗️ **LMS Course Builder:** Build and structure competency courses in the **Course Builder** tab.\n` +
+            `• 🔬 **Unit Syllabi:** Inspect full subject descriptions and prerequisites (e.g. *COMP1001, AI5001*) in the **Unit Syllabi** tab.\n` +
             `• 📝 **Admissions Portal:** Complete and submit your student enrolment directly via the **Application Form** tab.\n\n` +
             `Feel free to try sending your question again or explore our catalog!`,
         timestamp: new Date().toISOString()
@@ -530,6 +566,7 @@ export default function HomePage() {
         currentUser={classroomUser}
         onGoogleSignIn={handleGoogleSignInDirect}
         onLogout={handleLogoutAdmin}
+        onOpenTokens={() => setIsTokenModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -586,7 +623,10 @@ export default function HomePage() {
 
         {activeTab === 'builder' && (
           <div className="py-2">
-            <UnifiedCourseBuilder />
+            <UnifiedCourseBuilder
+              currentUserRole={classroomUser?.role}
+              onNavigateToCourses={() => setActiveTab('courses')}
+            />
           </div>
         )}
 
@@ -714,6 +754,13 @@ export default function HomePage() {
             localStorage.setItem('edupulse_api_key', key);
           } catch (e) {}
         }}
+      />
+
+      {/* EduPulse AI Tokens & Community Fund Modal */}
+      <TokenFundModal
+        isOpen={isTokenModalOpen}
+        onClose={() => setIsTokenModalOpen(false)}
+        currentUser={classroomUser}
       />
     </div>
   );

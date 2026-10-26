@@ -27,7 +27,12 @@ import {
   Upload,
   FileCheck,
   Loader2,
-  Check
+  Check,
+  FolderCheck,
+  ExternalLink,
+  Search,
+  X,
+  ChevronRight
 } from 'lucide-react';
 import { WorkHistoryItem, DocumentAuthenticityAudit } from '@/data/applications';
 import confetti from 'canvas-confetti';
@@ -55,6 +60,57 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
   const [isVerifyingIdentity, setIsVerifyingIdentity] = useState(false);
   const [isVerifyingAcademic, setIsVerifyingAcademic] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [degreeSearchQuery, setDegreeSearchQuery] = useState('');
+  const [degreeLevelFilter, setDegreeLevelFilter] = useState<'ALL' | 'Undergraduate' | 'Postgraduate' | 'Double Degree'>('ALL');
+
+  // Closest match search across all degrees (handling 500+ degrees in scroll down fashion)
+  const filteredCourses = React.useMemo(() => {
+    const query = degreeSearchQuery.trim().toLowerCase();
+    let list = COURSES_DATA;
+
+    if (degreeLevelFilter !== 'ALL') {
+      list = list.filter((c) => c.degreeLevel === degreeLevelFilter);
+    }
+
+    if (!query) return list;
+
+    const terms = query.split(/\s+/).filter(Boolean);
+
+    const scored = list
+      .map((c) => {
+        const titleLower = c.title.toLowerCase();
+        const codeLower = c.code.toLowerCase();
+        const facultyLower = (c.faculty || '').toLowerCase();
+        const overviewLower = (c.overview || '').toLowerCase();
+        const majorsStr = (c.majors || []).map((m) => m.name.toLowerCase()).join(' ');
+
+        let score = 0;
+
+        // Exact code match gets top priority
+        if (codeLower === query) score += 100;
+        else if (codeLower.includes(query)) score += 60;
+
+        // Exact title match gets high priority
+        if (titleLower === query) score += 90;
+        else if (titleLower.startsWith(query)) score += 50;
+        else if (titleLower.includes(query)) score += 30;
+
+        // Term matching across attributes
+        for (const term of terms) {
+          if (titleLower.includes(term)) score += 20;
+          if (codeLower.includes(term)) score += 15;
+          if (majorsStr.includes(term)) score += 10;
+          if (facultyLower.includes(term)) score += 8;
+          if (overviewLower.includes(term)) score += 5;
+        }
+
+        return { course: c, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    return scored.map((item) => item.course);
+  }, [degreeSearchQuery, degreeLevelFilter]);
 
   // Fields marked * in the form must be filled before submission
   const missingRequiredFields = [
@@ -92,6 +148,7 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
               imageBase64: base64,
               mimeType: file.type,
               applicantName: application.personalDetails.fullName,
+              applicantEmail: application.personalDetails.email || currentUser?.email || 'student@aifoundation.net.au',
               fileName: file.name
             })
           });
@@ -527,7 +584,7 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
               {selectedCourse.durationYears} Years • {selectedCourse.degreeLevel}
             </span>
             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-              application.status === 'Submitted'
+              application.status === 'Submitted' || application.status === 'Accepted' || application.status === 'Enrolled'
                 ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/40'
                 : 'bg-amber-500/30 text-amber-200 border border-amber-400/40'
             }`}>
@@ -842,9 +899,9 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
                     You can upload an image of your passport or driver license. Our AI will inspect the security patterns and record authenticity details for admissions.
                   </p>
                 </div>
-                <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200/90 px-2.5 py-1 rounded-xl font-medium flex items-center gap-1.5 shrink-0">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Privacy-First: Zero Copies Stored</span>
+                <div className="text-[11px] text-indigo-900 bg-indigo-50 border border-indigo-200/90 px-2.5 py-1 rounded-xl font-medium flex items-center gap-1.5 shrink-0">
+                  <FolderCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>Archived to Google Drive: 0AB6rUwSYF0xlUk9PVA</span>
                 </div>
               </div>
 
@@ -885,6 +942,28 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
                     <span className="font-bold text-emerald-950 block mb-0.5">AI Authenticity Assessment:</span>
                     {application.identityVerificationAudit.legitimacyNotes}
                   </div>
+
+                  {application.identityVerificationAudit.driveFileUrl && (
+                    <div className="p-2.5 bg-indigo-50/90 rounded-xl border border-indigo-200/90 text-indigo-950 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <FolderCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span className="font-semibold">Archived to Google Drive:</span>
+                        <span className="font-mono text-[11px] text-indigo-700 font-bold">
+                          {application.identityVerificationAudit.driveFolderPath || '0AB6rUwSYF0xlUk9PVA'}
+                        </span>
+                      </div>
+                      <a
+                        href={application.identityVerificationAudit.driveFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="link-view-gdrive-portal"
+                        className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs hover:shadow-xs transition-all"
+                      >
+                        <span>Open in Google Drive</span>
+                        <ExternalLink className="w-3 h-3 text-indigo-600" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="p-4 bg-slate-50/80 border border-dashed border-slate-300 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
@@ -1258,6 +1337,27 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
                           <span className="font-bold text-emerald-950 block mb-0.5">AI Authenticity Assessment:</span>
                           {audit.legitimacyNotes}
                         </div>
+
+                        {audit.driveFileUrl && (
+                          <div className="p-2.5 bg-indigo-50/90 rounded-xl border border-indigo-200/90 text-indigo-950 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <FolderCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <span className="font-semibold">Archived to Google Drive:</span>
+                              <span className="font-mono text-[11px] text-indigo-700 font-bold">
+                                {audit.driveFolderPath || '0AB6rUwSYF0xlUk9PVA'}
+                              </span>
+                            </div>
+                            <a
+                              href={audit.driveFileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shadow-2xs hover:shadow-xs transition-all"
+                            >
+                              <span>Open in Google Drive</span>
+                              <ExternalLink className="w-3 h-3 text-indigo-600" />
+                            </a>
+                          </div>
+                        )}
                       </div>
                     ))}
 
@@ -1336,29 +1436,17 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
             )}
 
             {/* Header & Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-purple-600" />
-                  <span>Step 4: Employment & Work History</span>
-                  <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                    Optional
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Share details of your current or previous employment, internships, contract roles, self-employment, or entrepreneurial endeavours.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddWorkHistory}
-                disabled={!isRegistered}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 self-start sm:self-auto cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group shadow-xs hover:shadow-purple-500/20"
-              >
-                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
-                <span>+ Work History</span>
-              </button>
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-purple-600" />
+                <span>Step 4: Employment & Work History</span>
+                <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                  Optional
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Share details of your current or previous employment, internships, contract roles, self-employment, or entrepreneurial endeavours.
+              </p>
             </div>
 
             {/* Helpful Entrepreneurial Prompt Callout */}
@@ -1658,60 +1746,35 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
                             </div>
                           )}
                         </div>
-
-                        {/* Purple "+ Work History" button at the bottom of the first work history */}
-                        {isFirst && (
-                          <div className="pt-3 border-t border-purple-100/90 mt-2">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-purple-50/80 p-4 rounded-xl border border-purple-200/90">
-                              <div className="space-y-0.5">
-                                <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
-                                  <Briefcase className="w-3.5 h-3.5 text-purple-700" />
-                                  <span>Have additional work experience or prior roles?</span>
-                                </div>
-                                <p className="text-[11px] text-purple-800">
-                                  Click the purple <strong>+ Work History</strong> button to add as many positions or entrepreneurial endeavours as you want.
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={handleAddWorkHistory}
-                                disabled={!isRegistered}
-                                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-purple-500/25 shrink-0 group"
-                              >
-                                <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
-                                <span>+ Work History</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     );
                   })}
 
-                  {/* Additional footer "+ Work History" button when multiple items exist */}
-                  {workList.length > 1 && (
-                    <div className="p-4 bg-purple-50/50 rounded-2xl border border-dashed border-purple-300 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-                      <div>
-                        <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5 justify-center sm:justify-start">
-                          <Briefcase className="w-3.5 h-3.5 text-purple-700" />
-                          <span>Add another work history</span>
+                  {/* Single Major "+ Work History" Button */}
+                  <div className="pt-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-purple-50/80 p-4 sm:p-5 rounded-2xl border border-purple-200/90 shadow-2xs">
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                          <Briefcase className="w-4 h-4 text-purple-700" />
+                          <span>Have additional work experience or prior roles?</span>
                         </div>
-                        <div className="text-[11px] text-purple-800">
-                          You can add as many work histories as you want. All positions will be documented in your student dossier.
-                        </div>
+                        <p className="text-[11px] text-purple-800">
+                          Click the purple <strong>+ Work History</strong> button to add as many positions or entrepreneurial endeavours as you want.
+                        </p>
                       </div>
+
                       <button
                         type="button"
                         onClick={handleAddWorkHistory}
                         disabled={!isRegistered}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm hover:shadow-purple-500/25 shrink-0 group"
+                        data-testid="btn-add-work-history-major"
+                        className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-[0.98] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-purple-500/25 shrink-0 group"
                       >
-                        <Plus className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-200" />
+                        <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
                         <span>+ Work History</span>
                       </button>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })()}
@@ -1754,36 +1817,195 @@ export const ApplicationPortalView: React.FC<ApplicationPortalViewProps> = ({
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">First Choice Degree *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {COURSES_DATA.map((c) => {
-                    const isSelected = application.coursePreferences.firstChoiceCourseId === c.id;
+              {/* Degree Selector Header & Search Bar */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    First Choice Degree *
+                  </label>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Showing {filteredCourses.length} of {COURSES_DATA.length} degrees
+                  </span>
+                </div>
+
+                {/* Search Bar with Auto Closest-Match Matching */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    disabled={!isRegistered}
+                    value={degreeSearchQuery}
+                    onChange={(e) => setDegreeSearchQuery(e.target.value)}
+                    placeholder="Type degree name, code, or keyword to find closest matches (e.g. Computer Science, Nursing, MBA)..."
+                    data-testid="input-degree-search"
+                    className="w-full pl-9 pr-9 py-2.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed shadow-2xs transition-all"
+                  />
+                  {degreeSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setDegreeSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 rounded-full transition-colors cursor-pointer"
+                      title="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Degree Level Filter Chips */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {(['ALL', 'Undergraduate', 'Postgraduate', 'Double Degree'] as const).map((lvl) => {
+                    const isActive = degreeLevelFilter === lvl;
                     return (
-                      <div
-                        key={c.id}
-                        onClick={() => handleCourseSelect(c.id)}
-                        className={`p-4 rounded-2xl border transition-all ${
-                          !isRegistered
-                            ? 'cursor-not-allowed opacity-80 bg-slate-50 border-slate-200'
-                            : 'cursor-pointer'
-                        } ${
-                          isSelected
-                            ? 'bg-indigo-50/70 border-indigo-600 ring-2 ring-indigo-500/20'
-                            : 'bg-slate-50 border-slate-200 hover:border-indigo-300'
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => setDegreeLevelFilter(lvl)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                          isActive
+                            ? 'bg-indigo-600 text-white shadow-2xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold font-mono px-2 py-0.5 bg-white rounded border border-slate-200 text-indigo-700">
-                            {c.code}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-500">{c.degreeLevel}</span>
-                        </div>
-                        <h4 className="font-bold text-slate-800 text-sm mt-2">{c.title}</h4>
-                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.overview}</p>
-                      </div>
+                        {lvl === 'ALL' ? 'All Degrees' : lvl}
+                      </button>
                     );
                   })}
+                </div>
+
+                {/* Selected Degree Summary Card (if chosen) */}
+                {selectedCourse && application.coursePreferences.firstChoiceCourseId && (
+                  <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex items-center justify-between gap-3 text-xs animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0">
+                        <Check className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-indigo-950 flex items-center gap-1.5 flex-wrap">
+                          <span>{selectedCourse.title}</span>
+                          <span className="font-mono text-[10px] bg-white px-1.5 py-0.2 rounded border border-indigo-200 text-indigo-700">
+                            {selectedCourse.code}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-indigo-700">
+                          {selectedCourse.degreeLevel} • {selectedCourse.durationYears} Years ({selectedCourse.faculty})
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-extrabold uppercase text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200 shrink-0">
+                      Active Selection
+                    </span>
+                  </div>
+                )}
+
+                {/* Scrollable Degree List (Handles 500+ degrees in a scroll down fashion) */}
+                <div
+                  data-testid="scrollable-degree-list"
+                  className="max-h-72 sm:max-h-80 overflow-y-auto space-y-2 p-2 bg-slate-50/70 border border-slate-200/90 rounded-2xl focus:outline-none"
+                >
+                  {filteredCourses.length > 0 ? (
+                    filteredCourses.map((c) => {
+                      const isSelected = application.coursePreferences.firstChoiceCourseId === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          role="button"
+                          tabIndex={0}
+                          data-testid={`degree-option-${c.id}`}
+                          onClick={() => handleCourseSelect(c.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleCourseSelect(c.id);
+                            }
+                          }}
+                          className={`p-3.5 rounded-xl border transition-all text-left group ${
+                            !isRegistered
+                              ? 'cursor-not-allowed opacity-80 bg-slate-50 border-slate-200'
+                              : 'cursor-pointer'
+                          } ${
+                            isSelected
+                              ? 'bg-indigo-50/90 border-indigo-600 ring-2 ring-indigo-500/20 shadow-2xs'
+                              : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] font-bold font-mono px-2 py-0.5 bg-slate-100 rounded border border-slate-200 text-indigo-700">
+                                {c.code}
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                                {c.degreeLevel}
+                              </span>
+                              {c.faculty && (
+                                <span className="text-[11px] text-slate-400 hidden sm:inline">
+                                  • {c.faculty}
+                                </span>
+                              )}
+                            </div>
+                            {isSelected ? (
+                              <span className="text-[11px] font-bold text-indigo-700 bg-white border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
+                                <span>Selected</span>
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-semibold text-slate-400 group-hover:text-indigo-600 flex items-center gap-0.5 shrink-0 transition-colors">
+                                <span>Select</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </div>
+
+                          <h4 className="font-bold text-slate-900 text-sm mt-1.5 group-hover:text-indigo-900 transition-colors">
+                            {c.title}
+                          </h4>
+
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                            {c.overview}
+                          </p>
+
+                          {c.majors && c.majors.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-semibold text-slate-400">Available Majors:</span>
+                              {c.majors.slice(0, 3).map((m, mIdx) => (
+                                <span
+                                  key={mIdx}
+                                  className="text-[10px] font-medium bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded"
+                                >
+                                  {m.name}
+                                </span>
+                              ))}
+                              {c.majors.length > 3 && (
+                                <span className="text-[10px] text-indigo-600 font-semibold">
+                                  +{c.majors.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-8 text-center space-y-2 bg-white rounded-xl border border-dashed border-slate-200">
+                      <Search className="w-6 h-6 text-slate-300 mx-auto" />
+                      <div className="text-xs font-bold text-slate-700">
+                        No degrees matching &quot;{degreeSearchQuery}&quot;
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Try searching by general keywords (e.g. Science, Engineering, Business, Art) or clear filters.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDegreeSearchQuery('');
+                          setDegreeLevelFilter('ALL');
+                        }}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition-colors mt-1 cursor-pointer"
+                      >
+                        Reset Search &amp; Filters
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

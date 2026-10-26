@@ -4,7 +4,7 @@ import { GoogleTranslate } from '@/components/GoogleTranslate';
 
 export const metadata: Metadata = {
   title: 'EduPulse AI / Super RTO - Admissions, Compliance & Course Platform',
-  description: 'Unified Registered Training Organisation & Enterprise Learning Management System combining university FAQs, course descriptions, individual unit syllabuses, LMS course builder, student application form filling, and Google Calendar event registrations.',
+  description: 'Unified Registered Training Organisation & Enterprise Learning Management System combining university FAQs, course descriptions, individual unit syllabi, LMS course builder, student application form filling, and Google Calendar event registrations.',
 };
 
 export default function RootLayout({

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UNITS_DATA, UnitDetail } from '@/data/units';
+import { getStoredUnitSyllabi } from '@/lib/courseBuilder/unitBank';
 import { UnitCard } from '@/components/chat/UnitCard';
 import { Search, Filter, BookOpen, Layers, Sparkles, Award } from 'lucide-react';
 
@@ -8,13 +9,37 @@ interface UnitCatalogViewProps {
 }
 
 export const UnitCatalogView: React.FC<UnitCatalogViewProps> = ({ onAskAgentAboutUnit }) => {
+  // Seed with UNITS_DATA so server and client first render match; stored units load in the effect below.
   const [units, setUnits] = useState<UnitDetail[]>(UNITS_DATA);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFaculty, setSelectedFaculty] = useState<string>('All');
-  const [selectedUnitCode, setSelectedUnitCode] = useState<string | null>(UNITS_DATA[0].code);
+  const [selectedUnitCode, setSelectedUnitCode] = useState<string | null>(
+    UNITS_DATA[0]?.code || 'COMP1001'
+  );
 
   useEffect(() => {
-    // 1. Fetch live published units from Course Builder
+    // 1. Initial sync with locally stored Unit Syllabi bank
+    const stored = getStoredUnitSyllabi();
+    if (stored && stored.length > 0) {
+      setUnits(stored);
+      if (!stored.some((u) => u.code === selectedUnitCode)) {
+        setSelectedUnitCode(stored[0].code);
+      }
+    }
+
+    // 2. Real-time reactive listener for newly created Course Builder units
+    const handleUnitsUpdated = (e: any) => {
+      const allUnits = e.detail?.allUnits || getStoredUnitSyllabi();
+      if (allUnits && allUnits.length > 0) {
+        setUnits(allUnits);
+        if (e.detail?.unit?.code) {
+          setSelectedUnitCode(e.detail.unit.code);
+        }
+      }
+    };
+    window.addEventListener('edupulse_units_updated', handleUnitsUpdated);
+
+    // 3. Fetch live published units from Course Builder
     fetch('/api/course-builder')
       .then((res) => res.json())
       .then((data) => {
@@ -59,23 +84,39 @@ export const UnitCatalogView: React.FC<UnitCatalogViewProps> = ({ onAskAgentAbou
               })),
               prescribedResources: []
             }));
-            setUnits(mappedUnits);
-            if (!mappedUnits.some((u) => u.code === selectedUnitCode)) {
-              setSelectedUnitCode(mappedUnits[0].code);
+
+            const currentStored = getStoredUnitSyllabi();
+            const codeMap = new Map<string, UnitDetail>();
+            currentStored.forEach((u) => codeMap.set(u.code.toUpperCase(), u));
+            mappedUnits.forEach((u) => codeMap.set(u.code.toUpperCase(), u));
+            const merged = Array.from(codeMap.values());
+
+            setUnits(merged);
+            if (!merged.some((u) => u.code === selectedUnitCode)) {
+              setSelectedUnitCode(merged[0].code);
             }
             return;
           }
         }
         return fetch('/api/sheets/sync').then((r) => r.json()).then((d) => {
           if (d.units && d.units.length > 0) {
-            setUnits(d.units);
-            if (!d.units.some((u: UnitDetail) => u.code === selectedUnitCode)) {
-              setSelectedUnitCode(d.units[0].code);
+            const currentStored = getStoredUnitSyllabi();
+            const codeMap = new Map<string, UnitDetail>();
+            currentStored.forEach((u) => codeMap.set(u.code.toUpperCase(), u));
+            (d.units as UnitDetail[]).forEach((u) => codeMap.set(u.code.toUpperCase(), u));
+            const merged = Array.from(codeMap.values());
+            setUnits(merged);
+            if (!merged.some((u: UnitDetail) => u.code === selectedUnitCode)) {
+              setSelectedUnitCode(merged[0].code);
             }
           }
         });
       })
       .catch((err) => console.log('Using default units catalog:', err));
+
+    return () => {
+      window.removeEventListener('edupulse_units_updated', handleUnitsUpdated);
+    };
   }, []);
 
   const faculties = ['All', 'Faculty of Engineering & Computer Science', 'Faculty of Science & Data Systems', 'Business School'];
@@ -100,14 +141,17 @@ export const UnitCatalogView: React.FC<UnitCatalogViewProps> = ({ onAskAgentAbou
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl">
         <div className="flex items-center gap-2 mb-2">
           <span className="px-3 py-1 bg-blue-500/30 text-blue-300 rounded-full text-xs font-semibold uppercase tracking-wider border border-blue-400/20">
-            Unit & Subject Syllabus Directory
+            Unit & Subject Syllabi Directory
           </span>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          Individual Unit Descriptions & Syllabuses
+        <h1
+          data-testid="unit-syllabi-header"
+          className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight"
+        >
+          Individual Unit Descriptions & Syllabi
         </h1>
         <p className="text-sm text-blue-200 mt-1 max-w-2xl">
-          Search unit codes, inspect weekly lecture topics, assessment weightings, prerequisites, and learning outcomes.
+          Search unit codes, inspect weekly lecture topics, assessment weightings, prerequisites, and learning outcomes across the Unit Syllabi bank.
         </p>
 
         {/* Search Bar */}

@@ -107,12 +107,36 @@ export const TokenCurrencyConfigContract = z.object({
 }).strict();
 
 export const TokenLotPurchaseContract = z.object({
-  tokens: z.number().int().min(1).max(10000), // Strict integer
-  currency: z.enum(['USD', 'AUD']),
+  tokens: z.number().int().min(1).max(100000), // Strict integer
+  currency: z.enum(['USD', 'AUD', 'usd', 'aud']),
   computedAmount: z.number().min(0.01),
-  targetAllocation: z.enum(['SELF', 'EMERGENCY_FUND', 'BENEFICIARY', 'UNREGISTERED_ESCROW']),
+  targetAllocation: z.enum(['SELF', 'EMERGENCY_FUND', 'BENEFICIARY', 'UNREGISTERED_ESCROW', 'COMMUNITY_FUND']),
   recipientEmail: z.string().email().optional(),
-  idempotencyKey: z.string().uuid()
+  idempotencyKey: z.string().uuid().optional()
+}).strict();
+
+export const StripeCheckoutRequestContract = z.object({
+  tokens: z.number().int().min(1).max(100000), // Strict integer
+  currency: z.enum(['usd', 'aud', 'USD', 'AUD']),
+  isCommunityFund: z.boolean().default(true),
+  contributorName: z.string().max(120).optional(),
+  contributorEmail: z.string().email().optional().or(z.literal('')),
+  note: z.string().max(500).optional()
+}).strict();
+
+export const TokenFundContributionContract = z.object({
+  id: z.string().min(1),
+  tokens: z.number().int().min(1), // Strict integer
+  currency: z.enum(['USD', 'AUD']),
+  fiatAmount: z.number().min(0.01),
+  contributorName: z.string().min(1).max(120),
+  contributorEmail: z.string().email().optional(),
+  isAnonymous: z.boolean().default(false),
+  note: z.string().max(500).optional(),
+  createdAt: z.string().datetime(),
+  stripeSessionId: z.string().optional(),
+  status: z.enum(['completed', 'pending']),
+  targetAllocation: z.enum(['COMMUNITY_FUND', 'SELF', 'UNREGISTERED_ESCROW']).default('COMMUNITY_FUND')
 }).strict();
 ```
 
@@ -219,5 +243,113 @@ export const GoogleDriveStartUploadResponseContract = z.object({
   fileName: z.string(),
   maxBytes: z.number().int()
 }).strict();
+
+---
+
+## 7. Backend Token Spend & Atomic Balance Contracts
+
+```typescript
+export const TokenSpendRequestContract = z.object({
+  tokens: z.number().int().min(1).max(100000), // Strict integer
+  action: z.string().min(1).max(100),
+  reason: z.string().max(255).optional(),
+  userId: z.string().max(128).optional(),
+  userEmail: z.string().email().optional(),
+  metadata: z.record(z.string(), z.any()).optional()
+}).strict();
+
+export const TokenSpendResponseContract = z.object({
+  success: z.boolean(),
+  spentTokens: z.number().int(),
+  remainingBalance: z.number().int(),
+  walletId: z.string(),
+  transactionId: z.string()
+}).strict();
+
+export const TokenBalanceResponseContract = z.object({
+  success: z.boolean(),
+  tokenBalance: z.number().int(),
+  balance: z.number().int(),
+  isSuperAdmin: z.boolean(),
+  isSuperadminWallet: z.boolean(),
+  isSharedWallet: z.boolean(),
+  walletId: z.string()
+}).strict();
 ```
 
+---
+
+## 8. Master Shared Superadmin Token Wallet Contract
+
+```typescript
+export const SharedSuperadminWalletContract = z.object({
+  id: z.literal('superadmin_shared'),
+  tokenBalance: z.number().int().min(0),
+  totalCommunityDonations: z.number().int().min(0),
+  totalPurchased: z.number().int().min(0),
+  totalSpent: z.number().int().min(0),
+  primarySuperadminEmail: z.literal('support@aifoundation.net.au'),
+  primarySuperadminUid: z.literal('L5euSJAfNKdDOX6mT0qmrCGjUA53'),
+  authorizedSuperadminEmails: z.array(z.string().email()),
+  lastUpdated: z.string().datetime().optional()
+}).strict();
+
+export const TokenLedgerEntryContract = z.object({
+  transactionId: z.string().min(1),
+  action: z.enum([
+    'COMMUNITY_FUND_DONATION_TO_SUPERADMIN',
+    'TOKEN_PURCHASE_SELF',
+    'TOKEN_SPENT',
+    'TOKEN_MANUAL_ADJUSTMENT'
+  ]),
+  actionName: z.string().optional(),
+  performedBy: z.string(),
+  userId: z.string().nullable().optional(),
+  targetAllocation: z.string(),
+  tokensAmount: z.number().int(),
+  fiatEquivalent: z.number().default(0),
+  currency: z.string().default('AUD'),
+  stripeSessionId: z.string().nullable().optional(),
+  reason: z.string().optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
+  newBalance: z.number().int().optional(),
+  remainingBalance: z.number().int().optional(),
+  timestamp: z.string().datetime()
+}).strict();
+```
+
+---
+
+## 11. Student Unit Enrolment & Cohort Contract
+
+```typescript
+export const StudentEnrolmentStatusSchema = z.enum([
+  'Enrolled',
+  'In Progress',
+  'Competent',
+  'Deferred',
+  'Withdrawn'
+]);
+
+export const UnitEnrolledStudentContract = z.object({
+  id: z.string().min(1).max(64),
+  studentName: z.string().min(2).max(120),
+  studentEmail: z.string().email(),
+  studentId: z.string().regex(/^[A-Z0-9-]{3,32}$/).optional(),
+  unitCode: z.string().regex(/^[A-Z0-9]{4,12}$/),
+  courseCode: z.string().regex(/^[A-Z0-9-]{3,16}$/).optional(),
+  enrolledAt: z.string().regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/),
+  status: StudentEnrolmentStatusSchema.default('Enrolled'),
+  notes: z.string().max(500).optional()
+}).strict();
+
+export const StudentEnrolmentCsvRowContract = z.object({
+  studentName: z.string().min(2).max(120),
+  studentEmail: z.string().email(),
+  studentId: z.string().optional(),
+  courseCode: z.string().optional(),
+  unitCode: z.string().min(3),
+  status: StudentEnrolmentStatusSchema.default('Enrolled'),
+  enrolledAt: z.string().optional()
+}).strict();
+```

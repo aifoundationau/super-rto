@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Graceful degradation: never crash the chat UI under Absolute Reliability Directive
-    const defaultMsg = 'Hello! I am your **EduPulse AI Student Assistant**. I am currently operating in resilient offline mode while server services synchronize. You can ask about **Degree Programs**, check **Unit Syllabuses (e.g. COMP1001)**, or start your **Application Form** using the tabs above.';
+    const defaultMsg = 'Hello! I am your **EduPulse AI Student Assistant**. I am currently operating in resilient offline mode while server services synchronize. You can ask about **Degree Programs**, check **Unit Syllabi (e.g. COMP1001)**, or start your **Application Form** using the tabs above.';
     const fallbackEval = evaluatePerceivedAccuracy(userText, { message: defaultMsg }, true);
 
     saveAiInteraction({

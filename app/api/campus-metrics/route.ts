@@ -6,12 +6,31 @@ export const dynamic = 'force-dynamic';
 
 export interface CampusMetricsData {
   heroBadgeText?: string;
+  // Box 1: Total Students
   totalStudents: string;
-  placementRate: string;
-  facultyStaff: string;
+  studentsTitle?: string;
   studentsSubtitle?: string;
+  showTotalStudents?: boolean;
+  // Box 2: Placement Rate
+  placementRate: string;
+  placementTitle?: string;
   placementSubtitle?: string;
+  showPlacementRate?: boolean;
+  // Box 3: Faculty & Staff
+  facultyStaff: string;
+  facultyTitle?: string;
   facultySubtitle?: string;
+  showFacultyStaff?: boolean;
+  // Box 4: Online Courses (NEW)
+  onlineCourses: string;
+  onlineCoursesTitle?: string;
+  onlineCoursesSubtitle?: string;
+  showOnlineCourses?: boolean;
+  // Box 5: Community Courses (NEW)
+  communityCourses: string;
+  communityCoursesTitle?: string;
+  communityCoursesSubtitle?: string;
+  showCommunityCourses?: boolean;
   // Severe Emergency Update (Weather / Environmental Hazard)
   emergencyAlert?: string;
   emergencyTitle?: string;
@@ -24,12 +43,32 @@ export interface CampusMetricsData {
 
 const DEFAULT_CAMPUS_METRICS: CampusMetricsData = {
   heroBadgeText: 'Your Future is Now • Powered by Gemini',
+  // Box 1
   totalStudents: '5,000+',
-  placementRate: '96%',
-  facultyStaff: '350+',
+  studentsTitle: 'Total Students',
   studentsSubtitle: 'Active learners across all faculties',
+  showTotalStudents: true,
+  // Box 2
+  placementRate: '96%',
+  placementTitle: 'Graduate Placement',
   placementSubtitle: 'Graduate employment within 90 days',
+  showPlacementRate: true,
+  // Box 3
+  facultyStaff: '350+',
+  facultyTitle: 'Faculty & Staff',
   facultySubtitle: 'Academic educators & operational staff',
+  showFacultyStaff: true,
+  // Box 4
+  onlineCourses: '120+',
+  onlineCoursesTitle: 'Online Courses',
+  onlineCoursesSubtitle: 'Flexible remote & self-paced credential pathways',
+  showOnlineCourses: true,
+  // Box 5
+  communityCourses: '45+',
+  communityCoursesTitle: 'Community Courses',
+  communityCoursesSubtitle: 'Regional outreach & adult vocational learning',
+  showCommunityCourses: true,
+  // Emergency
   emergencyAlert: '',
   emergencyTitle: '',
   emergencyActive: false,
@@ -88,11 +127,25 @@ export async function POST(req: NextRequest) {
     const {
       heroBadgeText,
       totalStudents,
-      placementRate,
-      facultyStaff,
+      studentsTitle,
       studentsSubtitle,
+      showTotalStudents,
+      placementRate,
+      placementTitle,
       placementSubtitle,
+      showPlacementRate,
+      facultyStaff,
+      facultyTitle,
       facultySubtitle,
+      showFacultyStaff,
+      onlineCourses,
+      onlineCoursesTitle,
+      onlineCoursesSubtitle,
+      showOnlineCourses,
+      communityCourses,
+      communityCoursesTitle,
+      communityCoursesSubtitle,
+      showCommunityCourses,
       emergencyAlert,
       emergencyTitle,
       emergencyActive,
@@ -119,12 +172,32 @@ export async function POST(req: NextRequest) {
 
     const updatedMetrics: CampusMetricsData = {
       heroBadgeText: heroBadgeText !== undefined ? heroBadgeText.trim() : (runtimeCache.heroBadgeText || 'Your Future is Now • Powered by Gemini'),
+      // Box 1: Total Students
       totalStudents: totalStudents?.trim() || runtimeCache.totalStudents || '5,000+',
+      studentsTitle: studentsTitle?.trim() || runtimeCache.studentsTitle || 'Total Students',
+      studentsSubtitle: studentsSubtitle?.trim() || runtimeCache.studentsSubtitle || 'Active learners across all faculties',
+      showTotalStudents: showTotalStudents !== undefined ? Boolean(showTotalStudents) : (runtimeCache.showTotalStudents ?? true),
+      // Box 2: Placement Rate
       placementRate: placementRate?.trim() || runtimeCache.placementRate || '96%',
+      placementTitle: placementTitle?.trim() || runtimeCache.placementTitle || 'Graduate Placement',
+      placementSubtitle: placementSubtitle?.trim() || runtimeCache.placementSubtitle || 'Graduate employment within 90 days',
+      showPlacementRate: showPlacementRate !== undefined ? Boolean(showPlacementRate) : (runtimeCache.showPlacementRate ?? true),
+      // Box 3: Faculty & Staff
       facultyStaff: facultyStaff?.trim() || runtimeCache.facultyStaff || '350+',
-      studentsSubtitle: studentsSubtitle?.trim() || 'Active learners across all faculties',
-      placementSubtitle: placementSubtitle?.trim() || 'Graduate employment within 90 days',
-      facultySubtitle: facultySubtitle?.trim() || 'Academic educators & operational staff',
+      facultyTitle: facultyTitle?.trim() || runtimeCache.facultyTitle || 'Faculty & Staff',
+      facultySubtitle: facultySubtitle?.trim() || runtimeCache.facultySubtitle || 'Academic educators & operational staff',
+      showFacultyStaff: showFacultyStaff !== undefined ? Boolean(showFacultyStaff) : (runtimeCache.showFacultyStaff ?? true),
+      // Box 4: Online Courses
+      onlineCourses: onlineCourses?.trim() || runtimeCache.onlineCourses || '120+',
+      onlineCoursesTitle: onlineCoursesTitle?.trim() || runtimeCache.onlineCoursesTitle || 'Online Courses',
+      onlineCoursesSubtitle: onlineCoursesSubtitle?.trim() || runtimeCache.onlineCoursesSubtitle || 'Flexible remote & self-paced credential pathways',
+      showOnlineCourses: showOnlineCourses !== undefined ? Boolean(showOnlineCourses) : (runtimeCache.showOnlineCourses ?? true),
+      // Box 5: Community Courses
+      communityCourses: communityCourses?.trim() || runtimeCache.communityCourses || '45+',
+      communityCoursesTitle: communityCoursesTitle?.trim() || runtimeCache.communityCoursesTitle || 'Community Courses',
+      communityCoursesSubtitle: communityCoursesSubtitle?.trim() || runtimeCache.communityCoursesSubtitle || 'Regional outreach & adult vocational learning',
+      showCommunityCourses: showCommunityCourses !== undefined ? Boolean(showCommunityCourses) : (runtimeCache.showCommunityCourses ?? true),
+      // Emergency
       emergencyAlert: typeof emergencyAlert === 'string' ? emergencyAlert.trim() : (runtimeCache.emergencyAlert || ''),
       emergencyTitle: typeof emergencyTitle === 'string' ? emergencyTitle.trim() : (runtimeCache.emergencyTitle || ''),
       emergencyActive: isEmergencyActive,

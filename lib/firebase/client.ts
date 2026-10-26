@@ -27,6 +27,8 @@ export const db: Firestore = getFirestore(app);
 
 export async function getClientAuthToken(): Promise<string | null> {
   try {
+    // On page load the persisted session is restored asynchronously; wait for it before reading currentUser.
+    await auth.authStateReady();
     if (!auth.currentUser) return null;
     return await auth.currentUser.getIdToken();
   } catch (e) {
