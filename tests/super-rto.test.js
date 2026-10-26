@@ -2197,9 +2197,9 @@ describe('Super-RTO Unified Platform Test Suite', () => {
   });
 
   describe('21. Superadmin Multi-Role Perspective Impersonator & Admin Panel Tab Access', () => {
-    it('defines access rules for all 22 admin tabs and grants Superadmin 100% access to all tabs', () => {
+    it('defines access rules for all 23 admin tabs and grants Superadmin 100% access to all tabs', () => {
       const allTabIds = Object.keys(ADMIN_PANEL_TAB_ACCESS);
-      assert.strictEqual(allTabIds.length, 22, 'ADMIN_PANEL_TAB_ACCESS must contain all 22 admin tabs');
+      assert.strictEqual(allTabIds.length, 23, 'ADMIN_PANEL_TAB_ACCESS must contain all 23 admin tabs');
 
       // Superadmin must be able to view every single tab
       for (const tabId of allTabIds) {
@@ -2252,6 +2252,11 @@ describe('Super-RTO Unified Platform Test Suite', () => {
       );
       assert.strictEqual(isTabAccessibleForRole('role_permissions', 'student'), false);
       assert.strictEqual(isTabAccessibleForRole('user_management', 'student'), false);
+      // Student Check is an RBAC-gated staff tool: never visible to students or teachers by default
+      assert.strictEqual(isTabAccessibleForRole('student_check', 'student'), false);
+      assert.strictEqual(isTabAccessibleForRole('student_check', 'teacher'), false);
+      assert.strictEqual(isTabAccessibleForRole('student_check', 'administration'), true);
+      assert.strictEqual(isTabAccessibleForRole('student_check', 'student_counsellor'), true);
       assert.strictEqual(isTabAccessibleForRole('tokens', 'student'), false);
       assert.strictEqual(isTabAccessibleForRole('api_key', 'student'), false);
 

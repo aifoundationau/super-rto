@@ -18,7 +18,7 @@
 
 import { db, auth, isFirebaseConfigured, recordActivity } from '@/lib/firebase/admin';
 import type { WriteBatch } from 'firebase-admin/firestore';
-import { normalizeRole } from '@/lib/auth/roles';
+import { normalizeRole, type SystemRole } from '@/lib/auth/roles';
 import { isValidStudentEmail, type StudentEnrolmentStatus } from '@/lib/courseBuilder/studentEnrolment';
 
 export interface EnrolmentInput {
@@ -174,15 +174,21 @@ async function hasEnrolmentStrict(email: string): Promise<boolean> {
   return !snapshot.empty;
 }
 
-export async function hasAnyEnrolment(email: string): Promise<boolean> {
-  if (!isFirebaseConfigured) return false;
+/**
+ * Sign-in reconciliation: a supporter with enrolments becomes a student, and a student with none
+ * falls back to supporter. Other roles are returned unchanged. A failed lookup keeps the current role
+ * and never blocks login.
+ */
+export async function reconcileEnrolmentRole(email: string, role: SystemRole): Promise<SystemRole> {
+  if (!isFirebaseConfigured || !email || (role !== 'supporter' && role !== 'student')) return role;
   try {
-    return await hasEnrolmentStrict(email);
+    const enrolled = await hasEnrolmentStrict(email);
+    if (role === 'supporter' && enrolled) return 'student';
+    if (role === 'student' && !enrolled) return 'supporter';
   } catch (err) {
-    // Called during sign-in; a lookup failure must never block login.
-    console.warn('[enrolments] hasAnyEnrolment lookup failed:', err);
-    return false;
+    console.warn('[enrolments] Role reconciliation lookup failed, keeping current role:', err);
   }
+  return role;
 }
 
 async function markApplicationsEnrolled(email: string, courseCode: string, courseTitle: string): Promise<number> {
@@ -363,4 +369,117 @@ export async function markNotificationsRead(email: string, ids?: string[]): Prom
   const readAt = new Date().toISOString();
   await commitInChunks(targets, (batch, n) => batch.update(db.collection(NOTIFICATIONS).doc(n.id), { read: true, readAt }));
   return targets.length;
+}
+
+export interface StudentCheckCourse {
+  courseCode: string;
+  courseTitle: string;
+  units: { unitCode: string; unitTitle: string; status: StudentEnrolmentStatus }[];
+}
+
+export interface StudentCheckRow {
+  uid: string | null; // null when enrolled by email but the person has never signed in
+  name: string;
+  email: string;
+  role: SystemRole | null;
+  lastLoginAt: string | null;
+  courses: StudentCheckCourse[];
+  unitCount: number;
+}
+
+/**
+ * Every account with the Student role, every account holding an enrolment, and every enrolled
+ * email that has no account yet, each with the courses and units they are enrolled in.
+ */
+export async function getStudentCheckReport(): Promise<StudentCheckRow[]> {
+  requireFirestore();
+  const [studentSnap, enrolmentSnap] = await Promise.all([
+    db.collection('users').where('role', 'in', ['student', 'Student', 'STUDENT']).get(),
+    db.collection(ENROLMENTS).get(),
+  ]);
+
+  const coursesByEmail = new Map<string, Map<string, StudentCheckCourse>>();
+  const nameByEmail = new Map<string, string>();
+  enrolmentSnap.docs.forEach((d) => {
+    const e = d.data() as EnrolmentRecord;
+    if (!e.studentEmail) return;
+    const courses = coursesByEmail.get(e.studentEmail) || new Map<string, StudentCheckCourse>();
+    const course = courses.get(e.courseCode) || { courseCode: e.courseCode, courseTitle: e.courseTitle, units: [] };
+    course.units.push({ unitCode: e.unitCode, unitTitle: e.unitTitle, status: e.status });
+    courses.set(e.courseCode, course);
+    coursesByEmail.set(e.studentEmail, courses);
+    if (e.studentName) nameByEmail.set(e.studentEmail, e.studentName);
+  });
+
+  const accountsByEmail = new Map<string, Record<string, any> & { uid: string }>();
+  studentSnap.docs.forEach((d) => {
+    const email = (d.data().email || '').toLowerCase();
+    if (email) accountsByEmail.set(email, { ...d.data(), uid: d.id });
+  });
+
+  // Look up accounts for enrolled emails that are not already in the student list ('in' allows 30 values).
+  const missing = Array.from(coursesByEmail.keys()).filter((email) => !accountsByEmail.has(email));
+  for (let i = 0; i < missing.length; i += 30) {
+    const snap = await db.collection('users').where('email', 'in', missing.slice(i, i + 30)).get();
+    snap.docs.forEach((d) => accountsByEmail.set((d.data().email || '').toLowerCase(), { ...d.data(), uid: d.id }));
+  }
+
+  const emails = new Set([...Array.from(accountsByEmail.keys()), ...Array.from(coursesByEmail.keys())]);
+  const rows: StudentCheckRow[] = Array.from(emails).map((email) => {
+    const account = accountsByEmail.get(email);
+    const courses = Array.from(coursesByEmail.get(email)?.values() || [])
+      .map((c) => ({ ...c, units: c.units.sort((a, b) => a.unitCode.localeCompare(b.unitCode)) }))
+      .sort((a, b) => a.courseCode.localeCompare(b.courseCode));
+    return {
+      uid: account?.uid || null,
+      name: account?.displayName || account?.name || nameByEmail.get(email) || email,
+      email,
+      role: account ? normalizeRole(account.role || account.status) : null,
+      lastLoginAt: account?.lastLoginAt || null,
+      courses,
+      unitCount: courses.reduce((n, c) => n + c.units.length, 0),
+    };
+  });
+
+  // Not-enrolled students first, then alphabetical.
+  return rows.sort((a, b) => Number(a.unitCount > 0) - Number(b.unitCount > 0) || a.name.localeCompare(b.name));
+}
+
+export class RoleChangeNotAllowedError extends Error {}
+
+/**
+ * Sets a user's role from the Student Check panel (Firestore profile + auth custom claims).
+ * When allowedCurrentRoles is given, accounts holding any other role are refused before anything is written.
+ */
+export async function setUserRoleFromStudentCheck(
+  uid: string,
+  role: SystemRole,
+  allowedCurrentRoles?: SystemRole[]
+): Promise<{ email: string; previousRole: SystemRole }> {
+  requireFirestore();
+  const ref = db.collection('users').doc(uid);
+  const doc = await ref.get();
+  if (!doc.exists) throw new Error('User account not found.');
+  const data = doc.data() || {};
+  const previousRole = normalizeRole(data.role || data.status);
+  if (allowedCurrentRoles && (data.isSuperAdmin === true || !allowedCurrentRoles.includes(previousRole))) {
+    throw new RoleChangeNotAllowedError('Only a Superadmin can change the role of a staff account.');
+  }
+
+  await ref.set(
+    {
+      role,
+      status: role,
+      classification: role.charAt(0).toUpperCase() + role.slice(1),
+      isSuperAdmin: role === 'superadmin',
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+  try {
+    await auth.setCustomUserClaims(uid, { role, isSuperAdmin: role === 'superadmin', roles: [role] });
+  } catch (claimErr) {
+    console.warn(`[student-check] Could not set ${role} claims for ${uid}:`, claimErr);
+  }
+  return { email: data.email || '', previousRole };
 }

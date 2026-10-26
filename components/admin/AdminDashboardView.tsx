@@ -42,7 +42,8 @@ import {
   Mail,
   Building2,
   UploadCloud,
-  RotateCcw
+  RotateCcw,
+  UserCheck
 } from 'lucide-react';
 
 import { ImageManager } from './ImageManager';
@@ -63,6 +64,7 @@ import { FacultyStaffDirectoryView } from './FacultyStaffDirectoryView';
 import { AdminDriveUploadPanel } from './AdminDriveUploadPanel';
 import { StudentCourseInfoPanel } from '@/components/student/StudentCourseInfoPanel';
 import { MyEnrolmentsPanel } from '@/components/student/MyEnrolmentsPanel';
+import { StudentCheckView } from './StudentCheckView';
 import { authenticatedFetch } from '@/lib/firebase/client';
 import { SYSTEM_ROLES, ROLE_DEFINITIONS, normalizeRole, getRoleMeta, isSuperAdmin, isProjectOwnerEmail } from '@/lib/auth/roles';
 import { SystemRole, isTabAccessibleForRole } from '@/lib/auth/permissions';
@@ -83,6 +85,7 @@ export type AdminTabId =
   | 'staff_messaging'
   | 'faculty_staff_directory'
   | 'user_management'
+  | 'student_check'
   | 'applications'
   | 'sheets_sync'
   | 'images'
@@ -116,6 +119,7 @@ export const ADMIN_TABS: AdminTabItem[] = [
   { id: 'staff_messaging', label: 'Staff Messages', icon: MessageSquare, badge: { text: '2', bg: 'bg-rose-500 text-white' }, activeBg: 'bg-indigo-600' },
   { id: 'faculty_staff_directory', label: 'Faculty & Staff Directory', icon: Building2, badge: { text: 'New', bg: 'bg-purple-500 text-white' }, activeBg: 'bg-indigo-600', testId: 'tab-faculty-staff-directory' /* data-testid="tab-faculty-staff-directory" */ },
   { id: 'user_management', label: 'Student & Staff IDs', icon: Users, activeBg: 'bg-indigo-600' },
+  { id: 'student_check', label: 'Student Check', icon: UserCheck, badge: { text: 'RBAC', bg: 'bg-rose-500 text-white' }, activeBg: 'bg-rose-600' },
   { id: 'applications', label: 'Applications', icon: FileText, activeBg: 'bg-indigo-600' },
   { id: 'sheets_sync', label: 'Google Sheets (24/7)', icon: Sheet, activeBg: 'bg-emerald-600' },
   { id: 'images', label: 'Images Folders', icon: ImageIcon, activeBg: 'bg-indigo-600' },
@@ -419,6 +423,30 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       setIsAssigningRole(false);
     }
   };
+
+  // Enrolled unit count per email, from Student Check. Null until loaded (or when the viewer lacks
+  // students.enrolment_check), so no student is flagged red without real enrolment data.
+  const [enrolledUnitsByEmail, setEnrolledUnitsByEmail] = useState<Map<string, number> | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'user_management') return;
+    authenticatedFetch('/api/admin/student-check')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!Array.isArray(data?.students)) return;
+        setEnrolledUnitsByEmail(
+          new Map(data.students.map((s: { email: string; unitCount: number }) => [s.email, s.unitCount]))
+        );
+      })
+      .catch(() => {});
+  }, [activeTab]);
+
+  const isUnenrolledStudent = (u: any) =>
+    enrolledUnitsByEmail !== null &&
+    normalizeRole(u.role) === 'student' &&
+    !enrolledUnitsByEmail.get((u.email || '').toLowerCase());
+
+  const unenrolledStudentCount = users.filter(isUnenrolledStudent).length;
 
   const filteredUsers = users.filter((u) => {
     const matchesRole = roleFilter === 'ALL' || (u.role && u.role.toLowerCase() === roleFilter.toLowerCase());
@@ -1269,8 +1297,9 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
           </div>
 
-          {/* Search & Filter Control Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+          {/* Search & Filter Control Bar: search on its own line, then the role categories in a wrapping grid
+              (2 rows of 9 on desktop, 3 rows on tablet, 6 rows on phone) with no horizontal scrolling */}
+          <div className="space-y-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
@@ -1282,18 +1311,33 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               />
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto py-1">
+            <div
+              role="group"
+              aria-label="Filter users by role"
+              data-testid="user-role-filter-grid"
+              className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-9 gap-1.5"
+            >
               {['ALL', ...SYSTEM_ROLES].map((role) => (
                 <button
                   key={role}
+                  type="button"
                   onClick={() => setRoleFilter(role)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap capitalize ${
+                  aria-pressed={roleFilter === role}
+                  className={`min-h-[34px] px-2 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold leading-tight text-center capitalize break-words flex items-center justify-center gap-1 transition-all cursor-pointer ${
                     roleFilter === role
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? 'bg-indigo-600 text-white shadow-xs border border-indigo-600'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                   }`}
                 >
-                  {role}
+                  <span>{role === 'ALL' ? 'All' : role.replace(/_/g, ' ')}</span>
+                  {role === 'student' && unenrolledStudentCount > 0 && (
+                    <span
+                      title="Students not enrolled in any course or unit"
+                      className="shrink-0 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black"
+                    >
+                      {unenrolledStudentCount}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -1335,7 +1379,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </tr>
                 ) : (
                   filteredUsers.map((u, idx) => (
-                    <tr key={u.uid || u.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={u.uid || u.id || idx}
+                      data-testid={isUnenrolledStudent(u) ? 'user-row-not-enrolled' : undefined}
+                      className={
+                        isUnenrolledStudent(u)
+                          ? 'bg-rose-50 hover:bg-rose-100/70 border-l-4 border-l-rose-500 transition-colors'
+                          : 'hover:bg-slate-50/80 transition-colors'
+                      }
+                    >
                       <td className="p-3.5 whitespace-nowrap">
                         {u.studentNumber ? (
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-950 font-mono font-bold rounded-lg text-xs">
@@ -1367,7 +1419,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       </td>
                       <td className="p-3.5 whitespace-nowrap">
                         <div className="font-semibold text-slate-800">{u.enrollmentYear || 2026}</div>
-                        <div className="text-[10px] text-emerald-600 font-semibold">Active Profile</div>
+                        {isUnenrolledStudent(u) ? (
+                          <div className="text-[10px] text-rose-700 font-bold">Not enrolled in any course</div>
+                        ) : enrolledUnitsByEmail && normalizeRole(u.role) === 'student' ? (
+                          <div className="text-[10px] text-emerald-600 font-semibold">
+                            Enrolled · {enrolledUnitsByEmail.get((u.email || '').toLowerCase())} unit(s)
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-emerald-600 font-semibold">Active Profile</div>
+                        )}
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">
                         <button
@@ -1398,6 +1458,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       {/* Tab: Faculty & Staff Directory Admin */}
       {activeTab === 'faculty_staff_directory' && (
         <FacultyStaffDirectoryView />
+      )}
+
+      {/* Tab: Student Check (enrolment status per student, RBAC: students.enrolment_check) */}
+      {activeTab === 'student_check' && (
+        <StudentCheckView />
       )}
 
       {/* Tab: Embed on Website Code Generator */}

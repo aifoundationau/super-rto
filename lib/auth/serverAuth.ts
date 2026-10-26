@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase/admin';
 import { isProjectOwnerEmail, normalizeRole, SystemRole, isDirector } from '@/lib/auth/roles';
+import { roleHasPermission } from '@/lib/auth/permissions';
 
 export interface VerifiedCaller {
   uid: string;
@@ -228,4 +229,49 @@ export async function requireAdministrationOrSuperAdminCaller(
   }
 
   return { caller };
+}
+
+/**
+ * Checks a verified caller against the RBAC matrix (Firestore /roles, falling back to defaults).
+ * Superadmins and Directors always pass.
+ */
+export async function callerHasPermission(caller: VerifiedCaller, permissionId: string): Promise<boolean> {
+  if (caller.isSuperAdmin || caller.role === 'superadmin' || caller.role === 'director') return true;
+
+  let customMap: Record<string, string[]> | undefined;
+  if (isFirebaseConfigured) {
+    try {
+      const roleDoc = await db.collection('roles').doc(caller.role).get();
+      const saved = roleDoc.exists ? roleDoc.data()?.permissions : null;
+      if (Array.isArray(saved)) customMap = { [caller.role]: saved };
+    } catch (err) {
+      console.warn(`[callerHasPermission] Could not load saved permissions for ${caller.role}, using defaults:`, err);
+    }
+  }
+  return roleHasPermission(caller.role, permissionId, customMap);
+}
+
+/**
+ * Requires a verified caller whose role grants the given RBAC permission.
+ */
+export async function requirePermissionCaller(
+  req: NextRequest,
+  permissionId: string
+): Promise<{ caller: VerifiedCaller } | { errorResponse: NextResponse }> {
+  const authCheck = await requireAuthenticatedCaller(req);
+  if ('errorResponse' in authCheck) return authCheck;
+
+  if (!(await callerHasPermission(authCheck.caller, permissionId))) {
+    return {
+      errorResponse: NextResponse.json(
+        {
+          error: `Forbidden: your role does not have the "${permissionId}" permission.`,
+          code: 'FORBIDDEN',
+          currentRole: authCheck.caller.role,
+        },
+        { status: 403 }
+      )
+    };
+  }
+  return authCheck;
 }

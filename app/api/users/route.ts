@@ -15,7 +15,7 @@ import {
   getVerifiedCaller,
   requireSuperAdminCaller
 } from '@/lib/auth/serverAuth';
-import { hasAnyEnrolment } from '@/lib/enrolments/service';
+import { reconcileEnrolmentRole } from '@/lib/enrolments/service';
 
 export const dynamic = 'force-dynamic';
 
@@ -170,11 +170,8 @@ export async function POST(req: NextRequest) {
       const isOwner = isProjectOwnerEmail(email);
       const previousRole = normalizeRole(existingData.role || existingData.status);
       const isSuper = isOwner || previousRole === 'superadmin' || existingData.isSuperAdmin === true;
-      let updatedRole: SystemRole = isSuper ? 'superadmin' : previousRole;
-      // Supporters enrolled into a course unit by staff become students on their next sign-in.
-      if (updatedRole === 'supporter' && email && await hasAnyEnrolment(email)) {
-        updatedRole = 'student';
-      }
+      // Supporter <-> student follows whether the user is enrolled in any course unit.
+      const updatedRole: SystemRole = isSuper ? 'superadmin' : await reconcileEnrolmentRole(email, previousRole);
 
       const updatedFields: Record<string, any> = {
         lastLoginAt: new Date().toISOString(),
@@ -228,10 +225,9 @@ export async function POST(req: NextRequest) {
 
     // First-time registration -> If the email is explicitly a verified project owner / superadmin email (like support@aifoundation.net.au), grant superadmin. Everyone else strictly receives role = supporter only!
     const isOwner = isProjectOwnerEmail(email);
-    let assignedRole: SystemRole = isOwner ? 'superadmin' : DEFAULT_REGISTRATION_ROLE; // 'supporter'
-    if (!isOwner && email && await hasAnyEnrolment(email)) {
-      assignedRole = 'student';
-    }
+    const assignedRole: SystemRole = isOwner
+      ? 'superadmin'
+      : await reconcileEnrolmentRole(email, DEFAULT_REGISTRATION_ROLE); // 'supporter', or 'student' if already enrolled
     const isSuper = isOwner;
 
     const newUserData = {

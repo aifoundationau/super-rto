@@ -78,6 +78,12 @@ export const SYSTEM_PERMISSIONS: SystemPermission[] = [
     description: 'Validate Unique Student Identifiers (USI) and assign official Student Registration numbers.',
     category: 'Admissions & Students',
   },
+  {
+    id: 'students.enrolment_check',
+    name: 'Student Enrolment Check',
+    description: 'Review every student account with the courses and units they are enrolled in, flag students with no enrolment, and change their role.',
+    category: 'Admissions & Students',
+  },
 
   // Finance & Operations
   {
@@ -273,6 +279,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'applications.review',
     'applications.export',
     'students.manage',
+    'students.enrolment_check',
     'events.manage',
     'calendar.manage',
     'faqs.edit',
@@ -323,6 +330,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'applications.view',
     'applications.review',
     'students.manage',
+    'students.enrolment_check',
     'finance.view',
     'finance.approve',
     'tokens.manage',
@@ -387,6 +395,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'applications.review',
     'applications.export',
     'students.manage',
+    'students.enrolment_check',
     'users.manage',
     'events.manage',
     'calendar.manage',
@@ -401,6 +410,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
     'applications.view',
     'applications.review',
     'students.manage',
+    'students.enrolment_check',
     'messaging.staff',
     'events.manage',
     'calendar.manage',
@@ -433,6 +443,7 @@ export const ADMIN_PANEL_TAB_ACCESS: Record<string, string[]> = {
   staff_messaging: ['messaging.staff'],
   faculty_staff_directory: ['users.manage'],
   user_management: ['users.manage', 'students.manage'],
+  student_check: ['students.enrolment_check'],
   applications: ['applications.view'],
   sheets_sync: ['sheets.sync'],
   images: ['courses.create'],
