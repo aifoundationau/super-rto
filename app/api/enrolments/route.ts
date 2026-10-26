@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === 'remove') {
-      const removed = await removeEnrolments(entries);
-      return NextResponse.json({ success: true, removed });
+      const result = await removeEnrolments(entries, caller.email);
+      return NextResponse.json({ success: true, ...result });
     }
 
     return NextResponse.json({ error: `Unknown action "${body.action}".` }, { status: 400 });

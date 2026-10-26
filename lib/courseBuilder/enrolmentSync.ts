@@ -78,7 +78,14 @@ export async function syncRemovedStudent(
     action: 'remove',
     enrolments: [{ studentEmail: student.studentEmail, courseCode: student.courseCode || courseCode, unitCode: student.unitCode }],
   });
-  return ok
-    ? { ok: true, summary: 'Removed from the server as well.' }
-    : { ok: false, summary: `Removed in this browser only. Server sync failed: ${data.error || 'unknown error'}` };
+  if (!ok) {
+    return { ok: false, summary: `Removed in this browser only. Server sync failed: ${data.error || 'unknown error'}` };
+  }
+  const reverted = (data.students || []).some((s: { roleUpdate: string }) => s.roleUpdate === 'reverted_to_supporter');
+  return {
+    ok: true,
+    summary: reverted
+      ? 'No enrolments remain, so their role is now Supporter.'
+      : 'Removed from their account.',
+  };
 }

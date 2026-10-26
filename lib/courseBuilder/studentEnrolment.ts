@@ -104,6 +104,15 @@ export const STUDENT_ENROLMENT_CSV_HEADERS = [
   'Enrolment Date'
 ] as const;
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Students are matched to their sign-in account by email, so a real address is always required.
+ */
+export function isValidStudentEmail(email: string | undefined | null): boolean {
+  return EMAIL_PATTERN.test((email || '').trim());
+}
+
 function esc(val: string | number | undefined | null): string {
   const str = String(val ?? '');
   return `"${str.replace(/"/g, '""')}"`;
@@ -216,7 +225,7 @@ export function parseStudentEnrolmentCsv(
     const rawLine = lines[idx];
     const tokens = parseStudentCsvLine(rawLine);
 
-    if (tokens.length === 0 || (tokens.length === 1 && !tokens[0])) {
+    if (tokens.every((t) => !t)) {
       continue;
     }
 
@@ -226,7 +235,11 @@ export function parseStudentEnrolmentCsv(
       continue;
     }
 
-    const email = tokens[1] || `${name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@student.rto.edu.au`;
+    const email = (tokens[1] || '').trim().toLowerCase();
+    if (!isValidStudentEmail(email)) {
+      errors.push(`Row ${idx + 1}: Missing or invalid email for "${name}".`);
+      continue;
+    }
     const studentId = tokens[2] || `STU-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 900 + 100)}`;
     const courseCode = tokens[3] || fallbackCourseCode;
     const unitCode = tokens[4] || fallbackUnitCode;
@@ -320,7 +333,7 @@ export function addStudentToUnit(
   unit: CourseUnit,
   studentInput: {
     studentName: string;
-    studentEmail?: string;
+    studentEmail: string;
     studentId?: string;
     courseCode?: string;
     status?: StudentEnrolmentStatus;
@@ -329,9 +342,7 @@ export function addStudentToUnit(
 ): { updatedUnit: CourseUnit; newStudent: UnitEnrolledStudent } {
   const existingList = [...(unit.enrolledStudents || [])];
   const name = studentInput.studentName.trim();
-  const email =
-    studentInput.studentEmail?.trim() ||
-    `${name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@student.rto.edu.au`;
+  const email = studentInput.studentEmail.trim().toLowerCase();
   const studentId =
     studentInput.studentId?.trim() ||
     `STU-2026-${String(existingList.length + 1).padStart(5, '0')}`;

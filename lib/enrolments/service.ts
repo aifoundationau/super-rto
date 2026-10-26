@@ -12,12 +12,14 @@
  * - Student role is upgraded from 'supporter' to 'student' (staff roles are never changed)
  * - The student's admission application(s) are marked 'Enrolled'
  * - One in-app notification per student, listing every newly added unit
+ *
+ * Removing a student's last enrolment returns their role from 'student' to 'supporter'.
  */
 
 import { db, auth, isFirebaseConfigured, recordActivity } from '@/lib/firebase/admin';
 import type { WriteBatch } from 'firebase-admin/firestore';
 import { normalizeRole } from '@/lib/auth/roles';
-import type { StudentEnrolmentStatus } from '@/lib/courseBuilder/studentEnrolment';
+import { isValidStudentEmail, type StudentEnrolmentStatus } from '@/lib/courseBuilder/studentEnrolment';
 
 export interface EnrolmentInput {
   studentName: string;
@@ -119,46 +121,63 @@ function toRecord(input: EnrolmentInput, enrolledBy: string, now: string): Enrol
 }
 
 /**
- * Upgrades a 'supporter' account to 'student'. Any other role (teacher, admin, etc.) is left alone.
+ * Moves every account with this email from one role to another, but only if it currently holds `from`.
+ * Staff and admin roles are never touched. Returns 'changed', 'unchanged', or 'no_account_yet'.
  */
-export async function promoteToStudentIfSupporter(email: string): Promise<RoleUpdateOutcome> {
+async function switchRoleIfCurrently(
+  email: string,
+  from: 'supporter' | 'student',
+  to: 'supporter' | 'student'
+): Promise<'changed' | 'unchanged' | 'no_account_yet'> {
   const snapshot = await db.collection('users').where('email', '==', email.toLowerCase().trim()).get();
   if (snapshot.empty) return 'no_account_yet';
 
-  let outcome: RoleUpdateOutcome = 'kept_staff_role';
+  let changed = false;
   for (const doc of snapshot.docs) {
     const data = doc.data() || {};
-    const role = normalizeRole(data.role || data.status);
-    if (role === 'student') {
-      outcome = 'already_student';
-      continue;
-    }
-    if (role !== 'supporter' || data.isSuperAdmin === true) continue;
+    if (normalizeRole(data.role || data.status) !== from || data.isSuperAdmin === true) continue;
 
     await doc.ref.set(
       {
-        role: 'student',
-        status: 'student',
-        classification: 'Student',
+        role: to,
+        status: to,
+        classification: to.charAt(0).toUpperCase() + to.slice(1),
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
     try {
-      await auth.setCustomUserClaims(doc.id, { role: 'student', isSuperAdmin: false, roles: ['student'] });
+      await auth.setCustomUserClaims(doc.id, { role: to, isSuperAdmin: false, roles: [to] });
     } catch (claimErr) {
-      console.warn(`[enrolments] Could not set student claims for ${doc.id}:`, claimErr);
+      console.warn(`[enrolments] Could not set ${to} claims for ${doc.id}:`, claimErr);
     }
-    outcome = 'promoted_to_student';
+    changed = true;
   }
-  return outcome;
+  return changed ? 'changed' : 'unchanged';
+}
+
+/**
+ * Upgrades a 'supporter' account to 'student'. Any other role (teacher, admin, etc.) is left alone.
+ */
+export async function promoteToStudentIfSupporter(email: string): Promise<RoleUpdateOutcome> {
+  const result = await switchRoleIfCurrently(email, 'supporter', 'student');
+  if (result === 'no_account_yet') return 'no_account_yet';
+  if (result === 'changed') return 'promoted_to_student';
+  const snapshot = await db.collection('users').where('email', '==', email.toLowerCase().trim()).get();
+  const isStudent = snapshot.docs.some((d) => normalizeRole(d.data()?.role || d.data()?.status) === 'student');
+  return isStudent ? 'already_student' : 'kept_staff_role';
+}
+
+// Throws on lookup failure, so callers that change roles never act on a failed read.
+async function hasEnrolmentStrict(email: string): Promise<boolean> {
+  const snapshot = await db.collection(ENROLMENTS).where('studentEmail', '==', email.toLowerCase().trim()).limit(1).get();
+  return !snapshot.empty;
 }
 
 export async function hasAnyEnrolment(email: string): Promise<boolean> {
   if (!isFirebaseConfigured) return false;
   try {
-    const snapshot = await db.collection(ENROLMENTS).where('studentEmail', '==', email.toLowerCase().trim()).limit(1).get();
-    return !snapshot.empty;
+    return await hasEnrolmentStrict(email);
   } catch (err) {
     // Called during sign-in; a lookup failure must never block login.
     console.warn('[enrolments] hasAnyEnrolment lookup failed:', err);
@@ -203,7 +222,7 @@ export async function enrolStudents(inputs: EnrolmentInput[], enrolledBy: string
 
   const records = new Map<string, EnrolmentRecord>();
   for (const input of inputs) {
-    if (!input.studentEmail?.trim() || !input.courseCode?.trim() || !input.unitCode?.trim()) continue;
+    if (!isValidStudentEmail(input.studentEmail) || !input.courseCode?.trim() || !input.unitCode?.trim()) continue;
     const record = toRecord(input, enrolledBy, now);
     records.set(record.id, record);
   }
@@ -272,14 +291,43 @@ export async function enrolStudents(inputs: EnrolmentInput[], enrolledBy: string
   return { saved: records.size, students };
 }
 
+export type RemovalRoleOutcome = 'reverted_to_supporter' | 'still_enrolled' | 'kept_role' | 'no_account_yet';
+
+/**
+ * Deletes enrolments. A student left with no enrolments in any course or unit falls back to 'supporter'.
+ */
 export async function removeEnrolments(
-  keys: { studentEmail: string; courseCode: string; unitCode: string }[]
-): Promise<number> {
+  keys: { studentEmail: string; courseCode: string; unitCode: string }[],
+  removedBy: string
+): Promise<{ removed: number; students: { studentEmail: string; roleUpdate: RemovalRoleOutcome }[] }> {
   requireFirestore();
   await commitInChunks(keys, (batch, k) =>
     batch.delete(db.collection(ENROLMENTS).doc(enrolmentDocId(k.studentEmail, k.courseCode, k.unitCode)))
   );
-  return keys.length;
+
+  const emails = Array.from(new Set(keys.map((k) => k.studentEmail.toLowerCase().trim())));
+  const students: { studentEmail: string; roleUpdate: RemovalRoleOutcome }[] = [];
+  for (const email of emails) {
+    let roleUpdate: RemovalRoleOutcome = 'still_enrolled';
+    if (!(await hasEnrolmentStrict(email))) {
+      const result = await switchRoleIfCurrently(email, 'student', 'supporter');
+      roleUpdate = result === 'changed' ? 'reverted_to_supporter' : result === 'no_account_yet' ? 'no_account_yet' : 'kept_role';
+    }
+
+    await recordActivity({
+      category: 'ENROLMENT',
+      action: 'STUDENT_UNENROLLED',
+      userEmail: email,
+      metadata: {
+        units: keys.filter((k) => k.studentEmail.toLowerCase().trim() === email).map((k) => `${k.courseCode}/${k.unitCode}`),
+        removedBy,
+        roleUpdate,
+      },
+    });
+    students.push({ studentEmail: email, roleUpdate });
+  }
+
+  return { removed: keys.length, students };
 }
 
 export async function getEnrolmentsForEmail(email: string): Promise<EnrolmentRecord[]> {

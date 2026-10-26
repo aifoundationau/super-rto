@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   Users,
   UserPlus,
@@ -29,20 +29,10 @@ import {
   parseStudentEnrolmentCsv,
   exportStudentsToCsv,
   addStudentToUnit,
-  removeStudentFromUnit
+  removeStudentFromUnit,
+  isValidStudentEmail
 } from '@/lib/courseBuilder/studentEnrolment';
 import { syncEnrolledStudents, syncRemovedStudent, type EnrolmentSyncResult } from '@/lib/courseBuilder/enrolmentSync';
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PLACEHOLDER_EMAIL_DOMAIN = '@student.rto.edu.au';
-
-// A typed email address is used as-is; any other write-in name gets a placeholder address.
-function deriveEmailFromName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '';
-  if (EMAIL_PATTERN.test(trimmed)) return trimmed.toLowerCase();
-  return `${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '.')}${PLACEHOLDER_EMAIL_DOMAIN}`;
-}
 
 interface UnitStudentEnrolmentPanelProps {
   courseCode: string;
@@ -83,8 +73,6 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [writeInName, setWriteInName] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
-  // True once the user types in the Email field; until then it follows the Name field.
-  const [isEmailEdited, setIsEmailEdited] = useState(false);
   const [studentId, setStudentId] = useState('');
   const [enrolmentStatus, setEnrolmentStatus] = useState<StudentEnrolmentStatus>('Enrolled');
   const [targetScope, setTargetScope] = useState<'current_unit' | 'all_units'>('current_unit');
@@ -96,6 +84,35 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
     type: 'success' | 'error' | 'info';
     text: string;
   } | null>(null);
+
+  // Two-step Enrolment State: details are reviewed in a confirmation popup before anything is saved
+  const [pendingEnrolment, setPendingEnrolment] = useState<{
+    studentName: string;
+    studentEmail: string;
+    studentId: string;
+    courseCode: string;
+    status: StudentEnrolmentStatus;
+    scope: 'current_unit' | 'all_units';
+  } | null>(null);
+
+  // Spreadsheet import is previewed the same way before anything is saved
+  const [pendingCsvImport, setPendingCsvImport] = useState<{
+    fileName: string;
+    rows: UnitEnrolledStudent[];
+    skipped: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!pendingEnrolment && !pendingCsvImport) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPendingEnrolment(null);
+        setPendingCsvImport(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pendingEnrolment, pendingCsvImport]);
 
   // Two-step Deletion State (Confirm Delete Gate)
   const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
@@ -110,7 +127,7 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
     return map;
   }, [allUnits, unit]);
 
-  // Local change is already applied; report the server sync (notifications, email, role) once it finishes.
+  // Local change is already applied; report the server sync (notifications, role) once it finishes.
   const reportServerSync = async (localText: string, sync: () => Promise<EnrolmentSyncResult>) => {
     setCsvStatusMessage({ type: 'info', text: `${localText} Syncing with student accounts…` });
     const result = await sync();
@@ -150,7 +167,6 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
     setSelectedCandidate(candidate);
     setWriteInName(candidate.name);
     setStudentEmail(candidate.email);
-    setIsEmailEdited(false);
     setStudentId(candidate.studentId);
     setIsDropdownOpen(false);
   };
@@ -161,12 +177,9 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
     setWriteInName(val);
     setSelectedCandidate(null);
     setIsDropdownOpen(true);
-    if (!isEmailEdited) {
-      setStudentEmail(deriveEmailFromName(val));
-    }
   };
 
-  // Add / Enrol Student
+  // Add / Enrol Student: validate, then open the confirmation popup
   const handleAddStudent = () => {
     if (!writeInName.trim()) {
       setCsvStatusMessage({
@@ -175,18 +188,33 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
       });
       return;
     }
+    if (!isValidStudentEmail(studentEmail)) {
+      setCsvStatusMessage({
+        type: 'error',
+        text: "Please enter the student's email address. It must match the email they sign in with."
+      });
+      return;
+    }
 
-    const payload = {
+    setPendingEnrolment({
       studentName: writeInName.trim(),
-      studentEmail: studentEmail.trim().toLowerCase() || deriveEmailFromName(writeInName),
+      studentEmail: studentEmail.trim().toLowerCase(),
       studentId: studentId.trim() || `STU-2026-${Math.floor(10000 + Math.random() * 90000)}`,
       courseCode,
-      status: enrolmentStatus
-    };
+      status: enrolmentStatus,
+      scope: targetScope === 'all_units' && onBulkUpdateUnits && allUnits.length > 0 ? 'all_units' : 'current_unit'
+    });
+  };
+
+  // Confirmed in the popup: apply locally, then save to Firebase
+  const handleConfirmEnrolment = () => {
+    if (!pendingEnrolment) return;
+    const { scope, ...payload } = pendingEnrolment;
+    setPendingEnrolment(null);
 
     let addedStudents: UnitEnrolledStudent[];
     let localText: string;
-    if (targetScope === 'all_units' && onBulkUpdateUnits && allUnits.length > 0) {
+    if (scope === 'all_units' && onBulkUpdateUnits) {
       addedStudents = [];
       const updatedUnits = allUnits.map((u) => {
         const { updatedUnit, newStudent } = addStudentToUnit(u, {
@@ -204,15 +232,11 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
       addedStudents = [newStudent];
       localText = `Enrolled "${payload.studentName}" into ${unit.unitCode}.`;
     }
-    if (payload.studentEmail.endsWith(PLACEHOLDER_EMAIL_DOMAIN)) {
-      localText += ` Warning: no real email was entered, so ${payload.studentName} won't see this in their account.`;
-    }
     reportServerSync(localText, () => syncEnrolledStudents(addedStudents, courseCode, courseTitle, unitTitles));
 
     // Reset Form
     setWriteInName('');
     setStudentEmail('');
-    setIsEmailEdited(false);
     setStudentId('');
     setSelectedCandidate(null);
     setIsDropdownOpen(false);
@@ -259,78 +283,81 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
     URL.revokeObjectURL(url);
   };
 
-  // CSV File Upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Units a spreadsheet row may target: every course unit when bulk updates are supported, else only this one
+  const importableUnits = onBulkUpdateUnits && allUnits.length > 0 ? allUnits : [unit];
+
+  // Parse the sheet and open the preview popup; nothing is saved until confirmed
+  const buildImportPreview = (csvText: string, fileName: string) => {
+    const { students: parsed, errors } = parseStudentEnrolmentCsv(csvText, courseCode, unit.unitCode);
+    const unitCodes = new Set(importableUnits.map((u) => u.unitCode.toUpperCase()));
+    const skipped = [...errors];
+    const rows: UnitEnrolledStudent[] = [];
+
+    parsed.forEach((s) => {
+      const unitCode = (s.unitCode || unit.unitCode).toUpperCase();
+      if (s.courseCode && s.courseCode.toUpperCase() !== courseCode.toUpperCase()) {
+        skipped.push(`${s.studentName}: course ${s.courseCode} is not ${courseCode}.`);
+      } else if (!unitCodes.has(unitCode)) {
+        skipped.push(`${s.studentName}: unit ${unitCode} is not in this course.`);
+      } else {
+        rows.push({ ...s, unitCode });
+      }
+    });
+
+    if (rows.length === 0 && skipped.length === 0) {
+      setCsvStatusMessage({ type: 'error', text: `${fileName} has no student rows.` });
+      return;
+    }
+    setPendingCsvImport({ fileName, rows, skipped });
+  };
+
+  // Spreadsheet Upload (.csv, or the first sheet of an Excel workbook)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Clear now so the same file can be chosen again after cancelling the preview
+    if (fileInputRef.current) fileInputRef.current.value = '';
 
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const text = evt.target?.result as string;
-      if (!text) return;
-
-      const { students: importedStudents, errors } = parseStudentEnrolmentCsv(
-        text,
-        courseCode,
-        unit.unitCode
-      );
-
-      if (errors.length > 0 && importedStudents.length === 0) {
-        setCsvStatusMessage({
-          type: 'error',
-          text: `CSV Import Failed: ${errors.join(', ')}`
-        });
-        return;
-      }
-
-      // Group students by unit code or assign to current unit
-      const unitCodeUpper = unit.unitCode.toUpperCase();
-      const currentUnitImports = importedStudents.filter(
-        (s) => !s.unitCode || s.unitCode.toUpperCase() === unitCodeUpper
-      );
-      const otherUnitImports = importedStudents.filter(
-        (s) => s.unitCode && s.unitCode.toUpperCase() !== unitCodeUpper
-      );
-
-      let updatedActiveUnit = { ...unit };
-      currentUnitImports.forEach((s) => {
-        const res = addStudentToUnit(updatedActiveUnit, s);
-        updatedActiveUnit = res.updatedUnit;
-      });
-
-      let appliedImports = currentUnitImports;
-      if (otherUnitImports.length > 0 && onBulkUpdateUnits && allUnits.length > 0) {
-        const courseUnitCodes = new Set(allUnits.map((u) => u.unitCode.toUpperCase()));
-        appliedImports = importedStudents.filter(
-          (s) => !s.unitCode || courseUnitCodes.has(s.unitCode.toUpperCase())
-        );
-        const updatedAll = allUnits.map((u) => {
-          if (u.unitCode.toUpperCase() === unitCodeUpper) {
-            return updatedActiveUnit;
-          }
-          const matchingForThisUnit = otherUnitImports.filter(
-            (s) => s.unitCode.toUpperCase() === u.unitCode.toUpperCase()
-          );
-          let temp = { ...u };
-          matchingForThisUnit.forEach((s) => {
-            const res = addStudentToUnit(temp, s);
-            temp = res.updatedUnit;
-          });
-          return temp;
-        });
-        onBulkUpdateUnits(updatedAll);
+    try {
+      let csvText: string;
+      if (/\.xlsx?$/i.test(file.name)) {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        csvText = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]], { blankrows: false });
       } else {
-        onUpdateUnit(updatedActiveUnit);
+        csvText = await file.text();
       }
+      buildImportPreview(csvText, file.name);
+    } catch (err: any) {
+      setCsvStatusMessage({ type: 'error', text: `Could not read ${file.name}: ${err?.message || 'unknown error'}` });
+    }
+  };
 
-      const forCourse = appliedImports.map((s) => ({ ...s, unitCode: s.unitCode || unit.unitCode }));
-      reportServerSync(`Successfully imported ${importedStudents.length} student enrolment(s) via CSV.`, () =>
-        syncEnrolledStudents(forCourse, courseCode, courseTitle, unitTitles)
-      );
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
+  // Confirmed in the preview popup: apply locally, then save to Firebase
+  const handleConfirmCsvImport = () => {
+    if (!pendingCsvImport) return;
+    const { rows, skipped } = pendingCsvImport;
+    setPendingCsvImport(null);
 
-    reader.readAsText(file);
+    const updatedUnits = importableUnits.map((u) => {
+      let temp = u;
+      rows
+        .filter((r) => r.unitCode === u.unitCode.toUpperCase())
+        .forEach((r) => {
+          temp = addStudentToUnit(temp, r).updatedUnit;
+        });
+      return temp;
+    });
+    if (importableUnits.length > 1 && onBulkUpdateUnits) {
+      onBulkUpdateUnits(updatedUnits);
+    } else {
+      onUpdateUnit(updatedUnits[0]);
+    }
+
+    const skippedNote = skipped.length > 0 ? ` ${skipped.length} row(s) skipped.` : '';
+    reportServerSync(`Imported ${rows.length} enrolment(s).${skippedNote}`, () =>
+      syncEnrolledStudents(rows, courseCode, courseTitle, unitTitles)
+    );
   };
 
   const getStatusBadgeClass = (status: StudentEnrolmentStatus) => {
@@ -506,7 +533,6 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
                         setWriteInName('');
                         setSelectedCandidate(null);
                         setStudentEmail('');
-                        setIsEmailEdited(false);
                         setStudentId('');
                       }}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
@@ -588,17 +614,15 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                    Student Email
+                    Student Email <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="email"
+                    required
                     data-testid="student-email-input"
                     placeholder="student@example.com"
                     value={studentEmail}
-                    onChange={(e) => {
-                      setStudentEmail(e.target.value);
-                      setIsEmailEdited(e.target.value.trim() !== '');
-                    }}
+                    onChange={(e) => setStudentEmail(e.target.value)}
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-indigo-500"
                   />
                 </div>
@@ -685,7 +709,7 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
                 ref={fileInputRef}
                 type="file"
                 data-testid="student-enrolment-csv-input"
-                accept=".csv"
+                accept=".csv,.xlsx,.xls"
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -843,6 +867,167 @@ export const UnitStudentEnrolmentPanel: React.FC<UnitStudentEnrolmentPanelProps>
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Enrolment Confirmation Popup */}
+      {pendingEnrolment && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+          onClick={() => setPendingEnrolment(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-enrolment-title"
+            data-testid="confirm-enrolment-dialog"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-xl p-5 space-y-4"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                <UserCheck className="w-4 h-4" />
+              </span>
+              <h3 id="confirm-enrolment-title" className="text-sm font-extrabold text-slate-900">
+                Confirm student enrolment
+              </h3>
+            </div>
+
+            <dl className="text-xs divide-y divide-slate-100 border border-slate-100 rounded-xl">
+              <div className="flex justify-between gap-3 px-3 py-2">
+                <dt className="text-slate-500 shrink-0">Name</dt>
+                <dd className="font-bold text-slate-900 text-right break-all">{pendingEnrolment.studentName}</dd>
+              </div>
+              <div className="flex justify-between gap-3 px-3 py-2 bg-amber-50/60">
+                <dt className="text-slate-500 shrink-0">Email</dt>
+                <dd className="font-bold font-mono text-slate-900 text-right break-all">{pendingEnrolment.studentEmail}</dd>
+              </div>
+              <div className="flex justify-between gap-3 px-3 py-2">
+                <dt className="text-slate-500 shrink-0">Student ID</dt>
+                <dd className="font-mono text-slate-800 text-right">{pendingEnrolment.studentId}</dd>
+              </div>
+              <div className="flex justify-between gap-3 px-3 py-2">
+                <dt className="text-slate-500 shrink-0">Status</dt>
+                <dd className="text-slate-800 text-right">{pendingEnrolment.status}</dd>
+              </div>
+              <div className="flex justify-between gap-3 px-3 py-2">
+                <dt className="text-slate-500 shrink-0">Enrol into</dt>
+                <dd className="text-slate-800 text-right">
+                  {pendingEnrolment.scope === 'all_units'
+                    ? `All ${allUnits.length} units of ${courseCode}`
+                    : `${unit.unitCode} – ${unit.unitTitle}`}
+                </dd>
+              </div>
+            </dl>
+
+            <p className="text-[11px] text-slate-500">
+              The email must match the address the student signs in with, or they won't see this enrolment.
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                data-testid="cancel-enrolment-btn"
+                onClick={() => setPendingEnrolment(null)}
+                className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Go back & edit
+              </button>
+              <button
+                type="button"
+                autoFocus
+                data-testid="confirm-enrolment-btn"
+                onClick={handleConfirmEnrolment}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Confirm & enrol
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Spreadsheet Import Preview Popup */}
+      {pendingCsvImport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+          onClick={() => setPendingCsvImport(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-import-title"
+            data-testid="confirm-csv-import-dialog"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 shadow-xl p-5 space-y-4 max-h-[90vh] flex flex-col"
+          >
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="p-2 bg-indigo-100 text-indigo-700 rounded-xl">
+                <FileSpreadsheet className="w-4 h-4" />
+              </span>
+              <div className="min-w-0">
+                <h3 id="confirm-import-title" className="text-sm font-extrabold text-slate-900">
+                  Confirm {pendingCsvImport.rows.length} enrolment{pendingCsvImport.rows.length === 1 ? '' : 's'}
+                </h3>
+                <p className="text-[11px] text-slate-500 break-all">{pendingCsvImport.fileName}</p>
+              </div>
+            </div>
+
+            {pendingCsvImport.rows.length > 0 && (
+              <ul className="text-xs divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-y-auto min-h-0">
+                {pendingCsvImport.rows.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 break-words">{r.studentName}</div>
+                      <div className="font-mono text-slate-700 break-all">{r.studentEmail}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono text-slate-800">{r.unitCode}</div>
+                      <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusBadgeClass(r.status)}`}>
+                        {r.status}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {pendingCsvImport.skipped.length > 0 && (
+              <div className="text-[11px] bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-3 py-2 space-y-0.5 max-h-28 overflow-y-auto shrink-0">
+                <div className="font-bold">{pendingCsvImport.skipped.length} row(s) will be skipped:</div>
+                {pendingCsvImport.skipped.map((reason, i) => (
+                  <div key={i} className="break-words">{reason}</div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-500 shrink-0">
+              Check each email matches the address the student signs in with, or they won't see their enrolment.
+            </p>
+
+            <div className="flex justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                data-testid="cancel-csv-import-btn"
+                onClick={() => setPendingCsvImport(null)}
+                className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                autoFocus
+                disabled={pendingCsvImport.rows.length === 0}
+                data-testid="confirm-csv-import-btn"
+                onClick={handleConfirmCsvImport}
+                className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Confirm & enrol {pendingCsvImport.rows.length}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
